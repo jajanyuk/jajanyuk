@@ -303,6 +303,22 @@
 
   /* Order item highlight for delete mode */
   .order-item.pending-delete { background: var(--red-light) !important; border-color: #FCA5A5 !important; opacity: 0.6; }
+
+  /* UTB Order Confirm Modal */
+  #utbConfirmModal { position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9991;display:none;align-items:center;justify-content:center;padding:20px; }
+  #utbConfirmModal.show { display:flex; }
+  .utb-confirm-box { background:var(--surface);border-radius:20px;padding:24px 20px;width:100%;max-width:360px;box-shadow:var(--shadow-lg);max-height:85vh;overflow-y:auto; }
+  .utb-confirm-icon { font-size:36px;text-align:center;margin-bottom:6px; }
+  .utb-confirm-title { font-size:17px;font-weight:800;color:var(--text);text-align:center;margin-bottom:12px; }
+  .utb-confirm-buyer { font-size:14px;font-weight:700;color:var(--brand);text-align:center;background:var(--brand-light);padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:14px; }
+  .utb-confirm-list { display:flex;flex-direction:column;gap:8px;margin-bottom:14px; }
+  .utb-confirm-item { display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm); }
+  .utb-confirm-item-name { font-size:13px;font-weight:700;color:var(--text); }
+  .utb-confirm-item-note { font-size:11px;color:var(--text3);margin-top:2px; }
+  .utb-confirm-item-price { font-size:13px;font-weight:700;color:var(--brand);font-family:'DM Mono',monospace;white-space:nowrap; }
+  .utb-confirm-total-row { display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:800;color:var(--text);padding-top:12px;border-top:1.5px solid var(--border);margin-bottom:16px; }
+  .utb-confirm-total-row span:last-child { color:var(--brand);font-family:'DM Mono',monospace; }
+  .utb-confirm-actions { display:flex;gap:8px; }
 </style>
 </head>
 <body>
@@ -520,7 +536,11 @@
             <option value="unpaid">Belum Bayar</option>
             <option value="paid">Sudah Bayar</option>
           </select>
-          <button class="sort-btn active" id="pesananSortBtn" onclick="togglePesananSort()" title="Urutkan nama pembeli">A↑Z</button>
+        </div>
+        <div class="filter-row" style="margin-bottom:8px;gap:6px">
+          <span style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0">Urutkan:</span>
+          <button class="sort-btn active" id="pesananSortBuyerBtn" onclick="setPesananSortField('buyer')" title="Urutkan nama pembeli">👤 Pembeli A↑Z</button>
+          <button class="sort-btn" id="pesananSortItemBtn" onclick="setPesananSortField('item')" title="Urutkan nama item">🍱 Item A↑Z</button>
         </div>
         <div class="date-shortcut-row" style="margin-bottom:6px">
           <button class="date-shortcut active" id="pesananShortcutToday" onclick="setPesananDateFilter('today',this)">Hari Ini</button>
@@ -665,7 +685,7 @@
       </div>
 
       <div class="utb-order-bar" id="utbOrderBar" style="display:none">
-        <button class="btn btn-primary w-full" onclick="submitUtbOrder()">✅ Order (<span id="utbSelectedCount">0</span> item · <span id="utbSelectedTotal">Rp 0</span>)</button>
+        <button class="btn btn-primary w-full" onclick="openUtbConfirm()">✅ Order (<span id="utbSelectedCount">0</span> item · <span id="utbSelectedTotal">Rp 0</span>)</button>
       </div>
     </div>
 
@@ -727,6 +747,24 @@
       <button class="pin-key" onclick="pinClear()" style="font-size:13px;color:var(--text2)">Batal</button>
       <button class="pin-key" onclick="pinPress('0')">0</button>
       <button class="pin-key del" onclick="pinDelete()">⌫</button>
+    </div>
+  </div>
+</div>
+
+<!-- UTB ORDER CONFIRM MODAL -->
+<div id="utbConfirmModal">
+  <div class="utb-confirm-box">
+    <div class="utb-confirm-icon">🧃</div>
+    <div class="utb-confirm-title">Konfirmasi Pesanan</div>
+    <div class="utb-confirm-buyer">👤 <span id="utbConfirmBuyerName">-</span></div>
+    <div class="utb-confirm-list" id="utbConfirmList"></div>
+    <div class="utb-confirm-total-row">
+      <span>Total</span>
+      <span id="utbConfirmTotal">Rp 0</span>
+    </div>
+    <div class="utb-confirm-actions">
+      <button class="btn btn-ghost" onclick="closeUtbConfirm()" style="flex:1;justify-content:center">Batal</button>
+      <button class="btn btn-primary" id="utbConfirmBtn" onclick="submitUtbOrder()" style="flex:1;justify-content:center">✅ Kirim Pesanan</button>
     </div>
   </div>
 </div>
@@ -797,6 +835,7 @@ let tagihanDateMode  = 'today';
 
 // Sort state
 let pesananSortMode  = 'asc';
+let pesananSortField = 'buyer';
 let tagihanSortMode  = 'asc';
 let tagihanSortField = 'name';
 let ringSortMode     = 'asc';
@@ -981,9 +1020,15 @@ function updateHeaderDate() {
 updateHeaderDate();
 
 // ============================================================
-// REALTIME LISTENERS
+// REALTIME LISTENERS (lazy: hanya start saat tab terkait dibuka)
 // ============================================================
-function startListeners() {
+let ordersListenerStarted = false;
+let depositsListenerStarted = false;
+let antrianListenerStarted = false;
+
+function startOrdersListener() {
+  if (ordersListenerStarted) return;
+  ordersListenerStarted = true;
   onSnapshot(query(ordersCol, orderBy('createdAt', 'asc')), snap => {
     orders = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
     renderOrders();
@@ -994,12 +1039,20 @@ function startListeners() {
     console.error('Orders listener error:', err);
     setSyncBadge('err');
   });
+}
 
+function startDepositsListener() {
+  if (depositsListenerStarted) return;
+  depositsListenerStarted = true;
   onSnapshot(query(depositsCol, orderBy('createdAt', 'asc')), snap => {
     deposits = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
     renderDeposits();
   }, err => console.error('Deposits listener error:', err));
+}
 
+function startAntrianListener() {
+  if (antrianListenerStarted) return;
+  antrianListenerStarted = true;
   onSnapshot(query(antrianCol, orderBy('createdAt', 'asc')), snap => {
     antrian = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
     renderAntrian();
@@ -1028,12 +1081,13 @@ window.switchTab = function(name) {
     navEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   }
 
-  if (name === 'antrian')   renderAntrian();
-  if (name === 'pesanan')   window.renderOrders();
-  if (name === 'ringkasan') renderSummary();
-  if (name === 'tagihan')   renderBuyerList();
-  if (name === 'deposit')   renderDeposits();
-  if (name === 'utb')       renderUtb();
+  // Load data on-demand: hanya start listener Firestore untuk tab yang baru dibuka
+  if (name === 'antrian')   { startAntrianListener(); renderAntrian(); }
+  if (name === 'pesanan')   { startOrdersListener(); startDepositsListener(); window.renderOrders(); }
+  if (name === 'ringkasan') { startOrdersListener(); renderSummary(); }
+  if (name === 'tagihan')   { startOrdersListener(); renderBuyerList(); }
+  if (name === 'deposit')   { startDepositsListener(); startOrdersListener(); renderDeposits(); }
+  if (name === 'utb')       { startAntrianListener(); renderUtb(); }
   if (name === 'qris')      renderQris();
 };
 
@@ -1256,15 +1310,35 @@ window.togglePaid = async function(firestoreId) {
   }
 };
 
-window.togglePesananSort = function() {
-  pesananSortMode = pesananSortMode === 'asc' ? 'desc' : 'asc';
-  const btn = document.getElementById('pesananSortBtn');
-  if (btn) {
-    btn.textContent = pesananSortMode === 'asc' ? 'A↑Z' : 'Z↓A';
-    btn.classList.toggle('active', true);
+window.setPesananSortField = function(field) {
+  if (pesananSortField === field) {
+    pesananSortMode = pesananSortMode === 'asc' ? 'desc' : 'asc';
+  } else {
+    pesananSortField = field;
+    pesananSortMode = 'asc';
   }
+  updatePesananSortBtn();
   window.renderOrders();
 };
+
+function updatePesananSortBtn() {
+  const buyerBtn = document.getElementById('pesananSortBuyerBtn');
+  const itemBtn  = document.getElementById('pesananSortItemBtn');
+  if (!buyerBtn || !itemBtn) return;
+
+  const dirIcon = pesananSortMode === 'asc' ? '↑Z' : '↓A';
+  const dirLabel = pesananSortMode === 'asc' ? 'A' : 'Z';
+
+  buyerBtn.classList.toggle('active', pesananSortField === 'buyer');
+  itemBtn.classList.toggle('active', pesananSortField === 'item');
+
+  buyerBtn.textContent = pesananSortField === 'buyer'
+    ? `👤 Pembeli ${pesananSortMode === 'asc' ? 'A↑Z' : 'Z↓A'}`
+    : '👤 Pembeli';
+  itemBtn.textContent = pesananSortField === 'item'
+    ? `🍱 Item ${pesananSortMode === 'asc' ? 'A↑Z' : 'Z↓A'}`
+    : '🍱 Item';
+}
 
 window.toggleTagihanSort = function() {
   tagihanSortMode = tagihanSortMode === 'asc' ? 'desc' : 'asc';
@@ -1319,8 +1393,10 @@ window.renderOrders = function renderOrders() {
   if (filterStatus === 'unpaid') filtered = filtered.filter(o => !o.paid);
 
   filtered = filtered.slice().sort((a, b) => {
-    const na = (a.buyer || '').toLowerCase();
-    const nb = (b.buyer || '').toLowerCase();
+    const fieldA = pesananSortField === 'item' ? (a.item || '') : (a.buyer || '');
+    const fieldB = pesananSortField === 'item' ? (b.item || '') : (b.buyer || '');
+    const na = fieldA.toLowerCase();
+    const nb = fieldB.toLowerCase();
     if (na !== nb) return pesananSortMode === 'asc' ? na.localeCompare(nb, 'id') : nb.localeCompare(na, 'id');
     return (b.createdAt || 0) - (a.createdAt || 0);
   });
@@ -1739,11 +1815,37 @@ window.toggleUtbItem = async function(firestoreId, isChecked) {
   }
 };
 
+window.openUtbConfirm = function() {
+  if (!utbUserName) return;
+  const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
+  if (!mySelected.length) { showToast('Belum ada item dipilih!', '⚠️'); return; }
+
+  document.getElementById('utbConfirmBuyerName').textContent = utbUserName;
+  const total = mySelected.reduce((s, a) => s + (a.price || 0) * (a.qty || 1), 0);
+  document.getElementById('utbConfirmTotal').textContent = rupiah(total);
+  document.getElementById('utbConfirmList').innerHTML = mySelected.map(a => `
+    <div class="utb-confirm-item">
+      <div>
+        <div class="utb-confirm-item-name">${a.item || '-'}${a.qty > 1 ? ' x' + a.qty : ''}</div>
+        ${a.note ? '<div class="utb-confirm-item-note">📝 ' + a.note + '</div>' : ''}
+      </div>
+      <div class="utb-confirm-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
+    </div>`).join('');
+
+  document.getElementById('utbConfirmModal').classList.add('show');
+};
+
+window.closeUtbConfirm = function() {
+  document.getElementById('utbConfirmModal').classList.remove('show');
+};
+
 window.submitUtbOrder = async function() {
   if (!utbUserName) return;
   const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
   if (!mySelected.length) { showToast('Belum ada item dipilih!', '⚠️'); return; }
 
+  const confirmBtn = document.getElementById('utbConfirmBtn');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Mengirim...'; }
   setSyncBadge('loading');
   try {
     const now = Date.now();
@@ -1753,10 +1855,13 @@ window.submitUtbOrder = async function() {
     await Promise.all(mySelected.map(a =>
       updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName })
     ));
+    closeUtbConfirm();
     showToast('Pesanan kamu berhasil dikirim! 🎉');
     setSyncBadge('ok');
   } catch(e) {
     showToast('Gagal order, coba lagi!', '❌'); setSyncBadge('err');
+  } finally {
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ Kirim Pesanan'; }
   }
 };
 
@@ -2474,11 +2579,14 @@ document.getElementById('qrisOverlay').addEventListener('click', function(e) {
   if (e.target === this) window.closeQrisFullscreen();
 });
 
+document.getElementById('utbConfirmModal').addEventListener('click', function(e) {
+  if (e.target === this) window.closeUtbConfirm();
+});
+
 // ============================================================
 // INIT
 // ============================================================
 applyAdminAccess();
-startListeners();
 renderQris();
 
 // Set default tanggal untuk delete date ke hari ini
