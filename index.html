@@ -2589,9 +2589,7 @@ document.getElementById('utbConfirmModal').addEventListener('click', function(e)
 applyAdminAccess();
 renderQris();
 
-// Set default tanggal untuk delete date ke hari ini
-document.getElementById('deleteDateFrom').value = today();
-document.getElementById('deleteDateTo').value = today();
+// Kolom tanggal hapus dikosongkan secara default - user harus pilih tanggal dulu
 updateDeleteDateInfo();
 
 // Filter listeners
