@@ -64,6 +64,7 @@ let ringSortMode     = 'asc';
 
 // UTB state
 let utbUserName = null;
+let utbUserLokasi = null;
 
 // ============================================================
 // ADMIN STATE
@@ -1002,7 +1003,20 @@ function renderAntrian() {
 window.utbSetName = function() {
   const val = document.getElementById('utbNameInput').value.trim();
   if (!val) { showToast('Isi nama dulu!', '⚠️'); return; }
-  utbUserName = val;
+
+  let lokasi = '';
+  while (!lokasi) {
+    lokasi = prompt('📍 Masukkan lokasi / lantai kamu:');
+    if (lokasi === null) {
+      showToast('Lokasi/lantai wajib diisi untuk lanjut!', '⚠️');
+      return; // batal, user harus klik tombol lagi
+    }
+    lokasi = lokasi.trim();
+    if (!lokasi) showToast('Lokasi/lantai tidak boleh kosong!', '⚠️');
+  }
+
+  utbUserName  = val;
+  utbUserLokasi = lokasi;
   document.getElementById('utbNameInput').value = '';
   renderUtb();
 };
@@ -1012,7 +1026,8 @@ window.utbChangeName = async function() {
   if (mine.length) {
     try { await Promise.all(mine.map(a => updateDoc(doc(db, 'antrian', a.firestoreId), { claimedBy: null }))); } catch(e) {}
   }
-  utbUserName = null;
+  utbUserName  = null;
+  utbUserLokasi = null;
   renderUtb();
 };
 
@@ -1042,7 +1057,7 @@ window.openUtbConfirm = function() {
   const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
   if (!mySelected.length) { showToast('Belum ada item dipilih!', '⚠️'); return; }
 
-  document.getElementById('utbConfirmBuyerName').textContent = utbUserName;
+document.getElementById('utbConfirmBuyerName').textContent = utbUserName + ' · 📍 ' + utbUserLokasi;
   const total = mySelected.reduce((s, a) => s + (a.price || 0) * (a.qty || 1), 0);
   document.getElementById('utbConfirmTotal').textContent = rupiah(total);
   document.getElementById('utbConfirmList').innerHTML = mySelected.map(a => `
@@ -1072,8 +1087,17 @@ window.submitUtbOrder = async function() {
   try {
     const now = Date.now();
     await Promise.all(mySelected.map((a, i) =>
-      addDoc(ordersCol, { buyer: utbUserName, item: a.item, price: a.price, qty: a.qty || 1, note: a.note || '', paid: false, date: today(), createdAt: now + i })
-    ));
+  addDoc(ordersCol, {
+    buyer: utbUserName,
+    item: a.item,
+    price: a.price,
+    qty: a.qty || 1,
+    note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
+    paid: false,
+    date: today(),
+    createdAt: now + i
+  })
+));
     await Promise.all(mySelected.map(a =>
       updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName })
     ));
