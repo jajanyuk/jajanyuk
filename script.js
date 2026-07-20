@@ -13,7 +13,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  where
+  where,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // ============================================================
@@ -359,9 +360,12 @@ window.deleteOrdersByDate = async function() {
   setSyncBadge('loading');
 
   try {
-    // Delete all orders in range
-    await Promise.all(toDelete.map(o => deleteDoc(doc(db, 'orders', o.firestoreId))));
-    showToast(`✅ ${toDelete.length} pesanan berhasil dihapus!`, '🗑️');
+    // Hitung ulang dari cache TERBARU (bisa saja ada order baru masuk
+    // selama prompt konfirmasi tampil), supaya tidak menghapus data usang
+    // atau melewatkan order baru yang masuk ke rentang tanggal yang sama.
+    const freshToDelete = orders.filter(o => o.date >= from && o.date <= to);
+    await Promise.all(freshToDelete.map(o => deleteDoc(doc(db, 'orders', o.firestoreId))));
+    showToast(`✅ ${freshToDelete.length} pesanan berhasil dihapus!`, '🗑️');
     setSyncBadge('ok');
     updateDeleteDateInfo();
   } catch(e) {
@@ -452,83 +456,148 @@ window.deleteOrder = async function(firestoreId) {
   }
 };
 
+// ------------------------------------------------------------
+// togglePaid — DIPERBAIKI: seluruh baca+tulis status lunas & saldo
+// deposit sekarang berjalan di dalam runTransaction() sehingga
+// selalu membaca nilai TERBARU dari server (bukan cache lokal) saat
+// commit. Ini mencegah "lost update" jika dua admin menandai lunas
+// pesanan berbeda dari pembeli yang sama secara bersamaan, atau jika
+// tombol tidak sengaja terpicu dua kali sebelum listener sempat
+// menyegarkan cache.
+// ------------------------------------------------------------
 window.togglePaid = async function(firestoreId) {
   const o = orders.find(o => o.firestoreId === firestoreId);
   if (!o) return;
 
+  // -------- BATALKAN STATUS LUNAS --------
   if (o.paid) {
     setSyncBadge('loading');
     try {
       const itemTotal = (o.price || 0) * (o.qty || 1);
-      if (o.paidViaDeposit) {
-        const bName = (o.buyer || '').toLowerCase();
-        const relDep = deposits
-          .filter(d => d.name && d.name.toLowerCase() === bName && (d.usedAmount || 0) > 0)
-          .sort((a, b) => b.createdAt - a.createdAt)[0];
-        if (relDep) {
-          const newUsed = Math.max(0, (relDep.usedAmount || 0) - itemTotal);
-          await updateDoc(doc(db, 'deposits', relDep.firestoreId), { usedAmount: newUsed });
+      await runTransaction(db, async (tx) => {
+        const orderRef = doc(db, 'orders', firestoreId);
+        const orderSnap = await tx.get(orderRef);
+        if (!orderSnap.exists()) throw new Error('not-found');
+        const orderData = orderSnap.data();
+        if (!orderData.paid) return; // sudah dibatalkan oleh proses lain, tidak perlu apa-apa
+
+        let depRef = null;
+        let depSnap = null;
+        if (orderData.paidViaDeposit) {
+          const bName = (orderData.buyer || '').toLowerCase();
+          const relDepCache = deposits
+            .filter(d => d.name && d.name.toLowerCase() === bName && (d.usedAmount || 0) > 0)
+            .sort((a, b) => b.createdAt - a.createdAt)[0];
+          if (relDepCache) {
+            depRef = doc(db, 'deposits', relDepCache.firestoreId);
+            depSnap = await tx.get(depRef); // baca fresh dari server (WAJIB sebelum tx.update)
+          }
         }
-      }
-      await updateDoc(doc(db, 'orders', firestoreId), { paid: false, paidViaDeposit: false });
+
+        if (depRef && depSnap && depSnap.exists()) {
+          const currentUsed = depSnap.data().usedAmount || 0;
+          const newUsed = Math.max(0, currentUsed - itemTotal);
+          tx.update(depRef, { usedAmount: newUsed });
+        }
+        tx.update(orderRef, { paid: false, paidViaDeposit: false });
+      });
       showToast('Ditandai belum bayar');
-      renderDeposits();
+      setSyncBadge('ok');
     } catch(e) {
+      console.error('togglePaid (batal lunas) error:', e);
       showToast('Gagal update!', '❌'); setSyncBadge('err');
     }
     return;
   }
 
+  // -------- TANDAI LUNAS --------
   const buyerName     = (o.buyer || '').toLowerCase();
   const buyerDeposits = deposits.filter(d => d.name && d.name.toLowerCase() === buyerName);
   const itemTotal     = (o.price || 0) * (o.qty || 1);
   const sisaDep       = buyerDeposits.reduce((s, d) => s + getDepositSisaById(d), 0);
 
-  setSyncBadge('loading');
-  try {
-    if (buyerDeposits.length > 0 && sisaDep > 0) {
-      const konfirmasi = confirm(
-        `💰 ${o.buyer} punya deposit!\n` +
-        `Sisa deposit: ${rupiah(sisaDep)}\n` +
-        `Harga item: ${rupiah(itemTotal)}\n\n` +
-        `Potong deposit secara otomatis?\n` +
-        `(Tekan OK = pakai deposit, Batal = bayar manual)`
-      );
-      if (konfirmasi) {
-        if (sisaDep < itemTotal) {
-          const kurang = itemTotal - sisaDep;
-          const lanjut = confirm(
-            `⚠️ Deposit tidak cukup!\n` +
-            `Sisa deposit: ${rupiah(sisaDep)}\n` +
-            `Kurang: ${rupiah(kurang)}\n\n` +
-            `Tetap tandai lunas (pakai deposit + bayar sisanya)?`
-          );
-          if (!lanjut) { setSyncBadge('ok'); return; }
-        }
-        let sisa = itemTotal;
-        const sortedDeps = buyerDeposits
-          .filter(d => getDepositSisaById(d) > 0)
-          .sort((a, b) => a.createdAt - b.createdAt);
-        const updates = [];
-        for (const dep of sortedDeps) {
-          if (sisa <= 0) break;
-          const depSisa  = getDepositSisaById(dep);
-          const dipotong = Math.min(depSisa, sisa);
-          const newUsed  = (dep.usedAmount || 0) + dipotong;
-          updates.push(updateDoc(doc(db, 'deposits', dep.firestoreId), { usedAmount: newUsed }));
-          sisa -= dipotong;
-        }
-        await Promise.all(updates);
-        await updateDoc(doc(db, 'orders', firestoreId), { paid: true, paidViaDeposit: true });
-        const sisaSetelah = Math.max(0, sisaDep - itemTotal);
-        showToast(`✓ Lunas pakai deposit! Sisa: ${rupiah(sisaSetelah)}`);
-        renderDeposits();
-        return;
+  // Dialog konfirmasi tetap pakai data cache untuk UX cepat.
+  // Nilai FINAL yang benar-benar dipotong tetap dihitung ulang dari
+  // data server di dalam transaksi di bawah.
+  let useDeposit = false;
+  if (buyerDeposits.length > 0 && sisaDep > 0) {
+    const konfirmasi = confirm(
+      `💰 ${o.buyer} punya deposit!\n` +
+      `Sisa deposit: ${rupiah(sisaDep)}\n` +
+      `Harga item: ${rupiah(itemTotal)}\n\n` +
+      `Potong deposit secara otomatis?\n` +
+      `(Tekan OK = pakai deposit, Batal = bayar manual)`
+    );
+    if (konfirmasi) {
+      useDeposit = true;
+      if (sisaDep < itemTotal) {
+        const kurang = itemTotal - sisaDep;
+        const lanjut = confirm(
+          `⚠️ Deposit tidak cukup!\n` +
+          `Sisa deposit: ${rupiah(sisaDep)}\n` +
+          `Kurang: ${rupiah(kurang)}\n\n` +
+          `Tetap tandai lunas (pakai deposit + bayar sisanya)?`
+        );
+        if (!lanjut) return;
       }
     }
-    await updateDoc(doc(db, 'orders', firestoreId), { paid: true, paidViaDeposit: false });
-    showToast('Ditandai sudah bayar ✓');
+  }
+
+  setSyncBadge('loading');
+  try {
+    let sisaSetelahFresh = null;
+    let alreadyPaid = false;
+
+    await runTransaction(db, async (tx) => {
+      const orderRef = doc(db, 'orders', firestoreId);
+      const orderSnap = await tx.get(orderRef);
+      if (!orderSnap.exists()) throw new Error('not-found');
+      const orderData = orderSnap.data();
+      if (orderData.paid) { alreadyPaid = true; return; } // sudah dilunasi proses lain
+
+      const freshItemTotal = (orderData.price || 0) * (orderData.qty || 1);
+
+      if (useDeposit) {
+        // Baca ULANG semua deposit pembeli ini langsung dari server
+        // (bukan dari array `deposits` cache) sebelum memutuskan potongan.
+        const depRefs = buyerDeposits.map(d => doc(db, 'deposits', d.firestoreId));
+        const depSnaps = await Promise.all(depRefs.map(r => tx.get(r)));
+
+        const depFresh = depSnaps
+          .map((snap, i) => snap.exists() ? { ref: depRefs[i], ...snap.data() } : null)
+          .filter(Boolean)
+          .sort((a, b) => a.createdAt - b.createdAt);
+
+        const totalSisaFresh = depFresh.reduce(
+          (s, d) => s + Math.max(0, (d.amount || 0) - (d.usedAmount || 0)), 0
+        );
+
+        let sisa = freshItemTotal;
+        for (const dep of depFresh) {
+          if (sisa <= 0) break;
+          const depSisa = Math.max(0, (dep.amount || 0) - (dep.usedAmount || 0));
+          if (depSisa <= 0) continue;
+          const dipotong = Math.min(depSisa, sisa);
+          tx.update(dep.ref, { usedAmount: (dep.usedAmount || 0) + dipotong });
+          sisa -= dipotong;
+        }
+        tx.update(orderRef, { paid: true, paidViaDeposit: true });
+        sisaSetelahFresh = Math.max(0, totalSisaFresh - freshItemTotal);
+      } else {
+        tx.update(orderRef, { paid: true, paidViaDeposit: false });
+      }
+    });
+
+    if (alreadyPaid) {
+      showToast('Pesanan ini sudah ditandai lunas', 'ℹ️');
+    } else if (useDeposit) {
+      showToast(`✓ Lunas pakai deposit! Sisa: ${rupiah(sisaSetelahFresh ?? 0)}`);
+    } else {
+      showToast('Ditandai sudah bayar ✓');
+    }
+    setSyncBadge('ok');
   } catch(e) {
+    console.error('togglePaid (tandai lunas) error:', e);
     showToast('Gagal update!', '❌'); setSyncBadge('err');
   }
 };
@@ -900,22 +969,53 @@ window.submitAntrianBulk = async function() {
   }
 };
 
+// ------------------------------------------------------------
+// sendAntrianToOrder — DIPERBAIKI: dibungkus runTransaction agar
+// pembuatan order + penandaan `sent:true` pada item antrian terjadi
+// atomik, dan tidak bisa dikirim dua kali (misal admin klik dua kali,
+// atau item yang sama sudah dikirim admin lain / diklaim di UTB).
+// ------------------------------------------------------------
 window.sendAntrianToOrder = async function(firestoreId) {
   const inputEl = document.getElementById('antrianBuyerInput-' + firestoreId);
   const buyer   = inputEl ? inputEl.value.trim() : '';
   if (!buyer) { showToast('Isi nama pembeli dulu!', '⚠️'); inputEl && inputEl.focus(); return; }
 
-  const a = antrian.find(a => a.firestoreId === firestoreId);
-  if (!a) return;
-
   setSyncBadge('loading');
   try {
-    await addDoc(ordersCol, { buyer, item: a.item, price: a.price, qty: a.qty || 1, note: a.note || '', paid: false, date: today(), createdAt: Date.now() });
-    await updateDoc(doc(db, 'antrian', firestoreId), { sent: true, buyer });
-    showToast(a.item + ' -> ' + buyer + ' dikirim ke Pesanan! ✓');
+    let itemName = '';
+    await runTransaction(db, async (tx) => {
+      const antrianRef = doc(db, 'antrian', firestoreId);
+      const snap = await tx.get(antrianRef);
+      if (!snap.exists()) throw new Error('not-found');
+      const data = snap.data();
+      if (data.sent) throw new Error('already-sent');
+      itemName = data.item;
+
+      const newOrderRef = doc(ordersCol);
+      tx.set(newOrderRef, {
+        buyer,
+        item: data.item,
+        price: data.price,
+        qty: data.qty || 1,
+        note: data.note || '',
+        paid: false,
+        date: today(),
+        createdAt: Date.now()
+      });
+      tx.update(antrianRef, { sent: true, buyer });
+    });
+    showToast(itemName + ' -> ' + buyer + ' dikirim ke Pesanan! ✓');
     setSyncBadge('ok');
   } catch(e) {
-    showToast('Gagal kirim!', '❌'); setSyncBadge('err');
+    if (e.message === 'already-sent') {
+      showToast('Item ini sudah terkirim sebelumnya!', 'ℹ️');
+    } else if (e.message === 'not-found') {
+      showToast('Item antrian tidak ditemukan!', '❌');
+    } else {
+      console.error('sendAntrianToOrder error:', e);
+      showToast('Gagal kirim!', '❌');
+    }
+    setSyncBadge('err');
   }
 };
 
@@ -1031,22 +1131,56 @@ window.utbChangeName = async function() {
   renderUtb();
 };
 
+// ------------------------------------------------------------
+// toggleUtbItem — DIPERBAIKI: klaim item sekarang atomik lewat
+// runTransaction(). Sebelumnya pengecekan `a.claimedBy` memakai cache
+// lokal, sehingga dua orang yang mencentang item yang sama dalam
+// waktu berdekatan (sebelum listener sempat sinkron) bisa
+// sama-sama lolos dan menimpa klaim satu sama lain. Sekarang
+// klaim dibaca ulang dari server tepat sebelum ditulis.
+// ------------------------------------------------------------
 window.toggleUtbItem = async function(firestoreId, isChecked) {
-  const a = antrian.find(x => x.firestoreId === firestoreId);
-  if (!a || !utbUserName) return;
+  if (!utbUserName) return;
 
   if (isChecked) {
-    if (a.claimedBy && a.claimedBy !== utbUserName) { renderUtb(); return; }
+    let claimFailed = false;
     try {
-      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: utbUserName });
+      await runTransaction(db, async (tx) => {
+        const ref = doc(db, 'antrian', firestoreId);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('not-found');
+        const data = snap.data();
+        if (data.sent) { claimFailed = true; return; }
+        if (data.claimedBy && data.claimedBy !== utbUserName) {
+          claimFailed = true;
+          return;
+        }
+        tx.update(ref, { claimedBy: utbUserName });
+      });
+      if (claimFailed) {
+        showToast('Item ini baru saja diambil orang lain!', '⚠️');
+      }
     } catch(e) {
+      console.error('toggleUtbItem (claim) error:', e);
       showToast('Gagal pilih item, coba lagi!', '❌');
+    } finally {
       renderUtb();
     }
   } else {
     try {
-      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: null });
+      await runTransaction(db, async (tx) => {
+        const ref = doc(db, 'antrian', firestoreId);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        // Hanya batalkan klaim milik sendiri
+        if (data.claimedBy === utbUserName) {
+          tx.update(ref, { claimedBy: null });
+        }
+      });
     } catch(e) {
+      console.error('toggleUtbItem (unclaim) error:', e);
+    } finally {
       renderUtb();
     }
   }
@@ -1076,6 +1210,14 @@ window.closeUtbConfirm = function() {
   document.getElementById('utbConfirmModal').classList.remove('show');
 };
 
+// ------------------------------------------------------------
+// submitUtbOrder — DIPERBAIKI: setiap item diproses lewat
+// runTransaction() tersendiri yang memvalidasi ULANG dari server
+// bahwa item belum `sent` dan `claimedBy` masih milik user ini,
+// sebelum membuat order + menandai `sent:true` secara atomik.
+// Ini mencegah order dobel untuk 1 item antrian jika terjadi race
+// (misal double-click, dua tab, atau item sempat direbut orang lain).
+// ------------------------------------------------------------
 window.submitUtbOrder = async function() {
   if (!utbUserName) return;
   const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
@@ -1084,27 +1226,50 @@ window.submitUtbOrder = async function() {
   const confirmBtn = document.getElementById('utbConfirmBtn');
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Mengirim...'; }
   setSyncBadge('loading');
+
+  const successItems = [];
+  const skippedItems = [];
+
   try {
-    const now = Date.now();
-    await Promise.all(mySelected.map((a, i) =>
-  addDoc(ordersCol, {
-    buyer: utbUserName,
-    item: a.item,
-    price: a.price,
-    qty: a.qty || 1,
-    note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
-    paid: false,
-    date: today(),
-    createdAt: now + i
-  })
-));
-    await Promise.all(mySelected.map(a =>
-      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName })
-    ));
+    for (const a of mySelected) {
+      try {
+        await runTransaction(db, async (tx) => {
+          const antrianRef = doc(db, 'antrian', a.firestoreId);
+          const snap = await tx.get(antrianRef);
+          if (!snap.exists()) throw new Error('skip');
+          const data = snap.data();
+          if (data.sent || data.claimedBy !== utbUserName) throw new Error('skip');
+
+          const newOrderRef = doc(ordersCol);
+          tx.set(newOrderRef, {
+            buyer: utbUserName,
+            item: data.item,
+            price: data.price,
+            qty: data.qty || 1,
+            note: (data.note ? data.note + ' · ' : '') + '📍 ' + utbUserLokasi,
+            paid: false,
+            date: today(),
+            createdAt: Date.now()
+          });
+          tx.update(antrianRef, { sent: true, buyer: utbUserName, claimedBy: utbUserName });
+        });
+        successItems.push(a.item);
+      } catch(innerErr) {
+        skippedItems.push(a.item);
+      }
+    }
+
     closeUtbConfirm();
-    showToast('Pesanan kamu berhasil dikirim! 🎉');
+    if (successItems.length && !skippedItems.length) {
+      showToast('Pesanan kamu berhasil dikirim! 🎉');
+    } else if (successItems.length && skippedItems.length) {
+      showToast(`${successItems.length} item terkirim, ${skippedItems.length} dilewati (sudah tidak tersedia)`, '⚠️');
+    } else {
+      showToast('Semua item sudah tidak tersedia, coba pilih ulang', '❌');
+    }
     setSyncBadge('ok');
   } catch(e) {
+    console.error('submitUtbOrder error:', e);
     showToast('Gagal order, coba lagi!', '❌'); setSyncBadge('err');
   } finally {
     if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ Kirim Pesanan'; }
@@ -1238,9 +1403,19 @@ function getDepositTotalByName(name) {
     .reduce((s, d) => s + (d.amount || 0), 0);
 }
 
+// ------------------------------------------------------------
+// autoCleanDepletedDeposits — DIPERBAIKI: menambah guard
+// `depositsBeingCleaned` supaya deposit yang sama tidak dihapus /
+// ditoast dua kali ketika renderDeposits() terpicu berulang kali
+// dalam waktu berdekatan (misal dari listener orders & deposits
+// yang menembak hampir bersamaan).
+// ------------------------------------------------------------
+const depositsBeingCleaned = new Set();
 async function autoCleanDepletedDeposits() {
-  const depleted = deposits.filter(d => getDepositSisaById(d) <= 0);
+  const depleted = deposits.filter(d => getDepositSisaById(d) <= 0 && !depositsBeingCleaned.has(d.firestoreId));
   if (!depleted.length) return;
+
+  depleted.forEach(d => depositsBeingCleaned.add(d.firestoreId));
   try {
     await Promise.all(depleted.map(d => deleteDoc(doc(db, 'deposits', d.firestoreId))));
     if (depleted.length === 1) {
@@ -1250,6 +1425,8 @@ async function autoCleanDepletedDeposits() {
     }
   } catch(e) {
     // silent
+  } finally {
+    depleted.forEach(d => depositsBeingCleaned.delete(d.firestoreId));
   }
 }
 
