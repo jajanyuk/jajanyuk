@@ -976,7 +976,7 @@ function renderAntrian() {
             <div class="antrian-item-name">${a.item || '-'}${a.qty > 1 ? ' <span style="font-size:12px;color:var(--text3)">x' + a.qty + '</span>' : ''}</div>
             ${a.note ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📝 ' + a.note + '</div>' : ''}
             ${antrianDateMode !== 'today' ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 ' + (a.date || '-') + '</div>' : ''}
-            ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + '</div>' : '')}
+            ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : '')}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <div class="antrian-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
@@ -1024,7 +1024,7 @@ window.utbSetName = function() {
 window.utbChangeName = async function() {
   const mine = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
   if (mine.length) {
-    try { await Promise.all(mine.map(a => updateDoc(doc(db, 'antrian', a.firestoreId), { claimedBy: null }))); } catch(e) {}
+    try { await Promise.all(mine.map(a => updateDoc(doc(db, 'antrian', a.firestoreId), { claimedBy: null, claimedByLokasi: null }))); } catch(e) {}
   }
   utbUserName  = null;
   utbUserLokasi = null;
@@ -1038,14 +1038,14 @@ window.toggleUtbItem = async function(firestoreId, isChecked) {
   if (isChecked) {
     if (a.claimedBy && a.claimedBy !== utbUserName) { renderUtb(); return; }
     try {
-      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: utbUserName });
+      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: utbUserName, claimedByLokasi: utbUserLokasi });
     } catch(e) {
       showToast('Gagal pilih item, coba lagi!', '❌');
       renderUtb();
     }
   } else {
     try {
-      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: null });
+      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: null, claimedByLokasi: null });
     } catch(e) {
       renderUtb();
     }
@@ -1099,7 +1099,7 @@ window.submitUtbOrder = async function() {
   })
 ));
     await Promise.all(mySelected.map(a =>
-      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName })
+      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName, claimedByLokasi: utbUserLokasi })
     ));
     closeUtbConfirm();
     showToast('Pesanan kamu berhasil dikirim! 🎉');
@@ -1163,7 +1163,7 @@ function renderUtb() {
       <div class="utb-item-info">
         <div class="utb-item-name">${a.item || '-'}${a.qty > 1 ? ' x' + a.qty : ''}</div>
         ${a.note ? '<div class="utb-item-note">📝 ' + a.note + '</div>' : ''}
-        ${lockedByOther ? '<div class="utb-item-locked-by">🔒 Dipilih oleh ' + a.claimedBy + '</div>' : ''}
+        ${lockedByOther ? '<div class="utb-item-locked-by">🔒 Dipilih oleh ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : ''}
       </div>
       <div class="utb-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
     </div>`;
