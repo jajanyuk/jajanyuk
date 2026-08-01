@@ -158,6 +158,12 @@ function today() {
 }
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
 function initials(name) { return name.split(' ').map(w => w[0]).join('').toUpperCase().substr(0, 2); }
+function formatTanggalIndo(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 // ============================================================
 // DATE FILTER HELPERS
@@ -258,6 +264,7 @@ function startOrdersListener() {
     renderDeposits();
     setSyncBadge('ok');
     updateDeleteDateInfo();
+    if (document.getElementById('tab-myorders')?.classList.contains('active')) renderMyOrders();
   }, err => {
     console.error('Orders listener error:', err);
     setSyncBadge('err');
@@ -280,6 +287,7 @@ function startAntrianListener() {
     antrian = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
     renderAntrian();
     if (document.getElementById('tab-utb').classList.contains('active')) renderUtb();
+    if (document.getElementById('tab-myorders')?.classList.contains('active')) renderMyOrders();
   }, err => console.error('Antrian listener error:', err));
 }
 
@@ -297,7 +305,7 @@ window.switchTab = function(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
 
-  const navMap = { antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', qris: 'navQris' };
+  const navMap = { antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', myorders: 'navMyOrders', qris: 'navQris' };
   const navEl = document.getElementById(navMap[name]);
   if (navEl) {
     navEl.classList.add('active');
@@ -311,6 +319,7 @@ window.switchTab = function(name) {
   if (name === 'tagihan')   { startOrdersListener(); renderBuyerList(); }
   if (name === 'deposit')   { startDepositsListener(); startOrdersListener(); renderDeposits(); }
   if (name === 'utb')       { startAntrianListener(); renderUtb(); }
+  if (name === 'myorders')  { startOrdersListener(); startAntrianListener(); renderMyOrders(); }
   if (name === 'qris')      renderQris();
 };
 
@@ -1095,7 +1104,10 @@ window.submitUtbOrder = async function() {
     note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
     paid: false,
     date: today(),
-    createdAt: now + i
+    createdAt: now + i,
+    source: 'utb',
+    lokasi: utbUserLokasi,
+    antrianId: a.firestoreId
   })
 ));
     await Promise.all(mySelected.map(a =>
@@ -1170,6 +1182,96 @@ function renderUtb() {
   }).join('');
 
   updateUtbOrderBar();
+}
+
+// ============================================================
+// PESANAN SAYA (dashboard item UTB yang sudah dipesan)
+// ============================================================
+window.deleteMyOrder = async function(firestoreId) {
+  if (!isAdmin) return;
+  const o = orders.find(x => x.firestoreId === firestoreId);
+  if (!o) return;
+  if (!confirm(`Hapus pesanan "${o.item}" milik ${o.buyer}?`)) return;
+
+  setSyncBadge('loading');
+  try {
+    await deleteDoc(doc(db, 'orders', firestoreId));
+    // Sinkronkan balik ke tab Antrian: item dikembalikan jadi tersedia lagi
+    if (o.antrianId) {
+      const a = antrian.find(x => x.firestoreId === o.antrianId);
+      if (a) {
+        await updateDoc(doc(db, 'antrian', o.antrianId), {
+          sent: false, buyer: null, claimedBy: null, claimedByLokasi: null
+        });
+      }
+    }
+    showToast('Pesanan dihapus & antrian disinkronkan', '🗑️');
+    setSyncBadge('ok');
+  } catch(e) {
+    console.error(e);
+    showToast('Gagal hapus pesanan!', '❌'); setSyncBadge('err');
+  }
+};
+
+function renderMyOrders() {
+  const namePrompt = document.getElementById('myOrdersNamePrompt');
+  const main       = document.getElementById('myOrdersMain');
+  if (!namePrompt || !main) return;
+
+  const utbOrders = orders.filter(o => o.source === 'utb');
+
+  // User biasa wajib punya nama UTB dulu; admin selalu bisa lihat semua
+  if (!isAdmin && !utbUserName) {
+    namePrompt.style.display = 'block';
+    main.style.display = 'none';
+    return;
+  }
+  namePrompt.style.display = 'none';
+  main.style.display = 'block';
+
+  document.getElementById('myOrdersAdminFilterWrap').style.display = isAdmin ? 'block' : 'none';
+
+  let myOrders = isAdmin ? utbOrders : utbOrders.filter(o => o.buyer === utbUserName);
+
+  document.getElementById('myOrdersTitle').textContent = isAdmin ? '📦 Semua Pesanan UTB' : '📦 Pesanan Saya';
+  document.getElementById('myOrdersSub').textContent = isAdmin
+    ? 'Semua item yang sudah dipesan lewat UTB oleh semua pengguna'
+    : 'Item yang sudah kamu pesan lewat UTB';
+
+  if (isAdmin) {
+    const searchEl = document.getElementById('filterMyOrdersBuyer');
+    const search   = searchEl ? searchEl.value.toLowerCase().trim() : '';
+    if (search) myOrders = myOrders.filter(o => (o.buyer || '').toLowerCase().includes(search));
+  }
+
+  myOrders = myOrders.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  const total = myOrders.reduce((s, o) => s + (o.price || 0) * (o.qty || 1), 0);
+  document.getElementById('myOrdersTotal').textContent = rupiah(total);
+  document.getElementById('myOrdersCount').textContent = myOrders.length + ' item';
+
+  const list = document.getElementById('myOrdersList');
+  if (!myOrders.length) {
+    const msg = isAdmin ? 'Belum ada pesanan UTB' : 'Kamu belum pernah pesan lewat UTB';
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">${msg}</div></div>`;
+    return;
+  }
+
+  list.innerHTML = myOrders.map(o => `
+    <div class="order-item ${o.paid ? 'paid' : ''}">
+      <div class="order-item-info">
+        <div class="order-item-name">
+          ${o.item || '-'}
+          <span class="badge ${o.paid ? 'badge-paid' : 'badge-unpaid'}">${o.paid ? '✓ Lunas' : '⏳ Belum'}</span>
+          <span class="badge" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE">🧃 UTB</span>
+        </div>
+        ${isAdmin ? '<div class="order-item-buyer">👤 ' + (o.buyer || '-') + (o.qty > 1 ? ' · x' + o.qty : '') + '</div>' : (o.qty > 1 ? '<div class="order-item-buyer">x' + o.qty + '</div>' : '')}
+        ${o.lokasi ? '<div class="order-item-details">📍 ' + o.lokasi + '</div>' : ''}
+        <div class="order-item-date">📅 ${formatTanggalIndo(o.date)}</div>
+        ${isAdmin ? '<div class="order-item-actions"><button class="btn btn-sm btn-danger" onclick="deleteMyOrder(\'' + o.firestoreId + '\')">🗑 Hapus</button></div>' : ''}
+      </div>
+      <div class="order-item-price">${rupiah((o.price || 0) * (o.qty || 1))}</div>
+    </div>`).join('');
 }
 
 // ============================================================
@@ -1595,6 +1697,7 @@ function buildBillText(buyerName, onlyUnpaid) {
     t += `• ${o.item}`;
     if (o.qty > 1) t += ` (x${o.qty})`;
     if (o.note)    t += ` [${o.note}]`;
+    t += `\n  📅 ${formatTanggalIndo(o.date)}`;
     t += `\n  ${rupiah(o.price)}${o.qty > 1 ? ' × ' + o.qty + ' = ' + rupiah(sub) : ''}`;
     t += o.paid ? ' ✅' : ' ⏳';
     t += '\n';
@@ -1676,6 +1779,7 @@ function buildAllUnpaidText() {
       if (o.qty > 1) text += ` (x${o.qty})`;
       if (o.note)    text += ` [${o.note}]`;
       text += ` -> ${rupiah(o.price * o.qty)}\n`;
+      text += `    📅 ${formatTanggalIndo(o.date)}\n`;
     });
     text += `  💰 Subtotal: *${rupiah(bTotal)}*\n`;
     if (idx < sortedBuyers.length - 1) text += `  ─────────────────\n`;
@@ -1844,6 +1948,9 @@ document.getElementById('filterStatus').addEventListener('change', () => window.
 
 const filterTagihanBuyerEl = document.getElementById('filterTagihanBuyer');
 if (filterTagihanBuyerEl) filterTagihanBuyerEl.addEventListener('input', () => window.renderBuyerList());
+
+const filterMyOrdersBuyerEl = document.getElementById('filterMyOrdersBuyer');
+if (filterMyOrdersBuyerEl) filterMyOrdersBuyerEl.addEventListener('input', () => renderMyOrders());
 
 // Delete date listeners untuk update info
 document.getElementById('deleteDateFrom').addEventListener('change', updateDeleteDateInfo);
