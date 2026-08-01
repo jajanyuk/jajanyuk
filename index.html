@@ -41,6 +41,7 @@
       <button class="nav-btn locked" id="navRingkasan" onclick="switchTab('ringkasan')"><span class="nav-icon">📊</span>Ringkasan</button>
       <button class="nav-btn locked" id="navTagihan" onclick="switchTab('tagihan')"><span class="nav-icon">🧾</span>Tagihan</button>
       <button class="nav-btn" id="navUtb" onclick="switchTab('utb')"><span class="nav-icon">🧃</span>UTB</button>
+      <button class="nav-btn" id="navMyOrders" onclick="switchTab('myorders')"><span class="nav-icon">📦</span>Pesanan Saya</button>
       <button class="nav-btn active" id="navQris" onclick="switchTab('qris')"><span class="nav-icon">📲</span>QRIS</button>
     </div>
   </div>
@@ -373,6 +374,45 @@
 
       <div class="utb-order-bar" id="utbOrderBar" style="display:none">
         <button class="btn btn-primary w-full" onclick="openUtbConfirm()">✅ Order (<span id="utbSelectedCount">0</span> item · <span id="utbSelectedTotal">Rp 0</span>)</button>
+      </div>
+    </div>
+
+    <!-- TAB: PESANAN SAYA (dashboard item UTB yang sudah dipesan) -->
+    <div class="tab-panel" id="tab-myorders">
+
+      <!-- Prompt jika belum set nama UTB (khusus user, admin selalu bisa lihat semua) -->
+      <div class="card utb-name-card" id="myOrdersNamePrompt" style="display:none">
+        <div class="utb-name-icon">📦</div>
+        <div class="utb-name-title">Belum Ada Nama UTB</div>
+        <div class="utb-name-sub">Masuk dulu lewat tab UTB untuk mulai pesan &amp; melihat riwayat pesanan kamu di sini</div>
+        <button class="btn btn-primary" onclick="switchTab('utb')">🧃 Ke Tab UTB</button>
+      </div>
+
+      <div id="myOrdersMain" style="display:none">
+        <!-- Ringkasan -->
+        <div class="card" id="myOrdersSummaryCard">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div>
+              <div class="section-title" style="margin-bottom:2px" id="myOrdersTitle">📦 Pesanan Saya</div>
+              <div style="font-size:12px;color:var(--text2)" id="myOrdersSub">Item yang sudah dipesan lewat UTB</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:11px;color:var(--text3);font-weight:600">TOTAL</div>
+              <div style="font-size:18px;font-weight:800;color:var(--brand);font-family:'DM Mono',monospace" id="myOrdersTotal">Rp 0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter khusus admin: cari nama pemesan -->
+        <div class="filter-section" id="myOrdersAdminFilterWrap" style="display:none">
+          <div class="filter-section-title">🔍 Filter &amp; Cari</div>
+          <div class="filter-row">
+            <input type="text" class="filter-input" id="filterMyOrdersBuyer" placeholder="🔍 Cari nama pemesan...">
+          </div>
+        </div>
+
+        <div class="section-title">🧾 Riwayat Pesanan <span id="myOrdersCount">0 item</span></div>
+        <div class="orders-list" id="myOrdersList"></div>
       </div>
     </div>
 
