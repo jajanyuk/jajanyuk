@@ -112,6 +112,15 @@ function updatePinDots() {
   }
 }
 
+function formatDuration(ms) {
+  if (!ms || ms < 0) return '';
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (m === 0) return `${s} dtk`;
+  return `${m} mnt ${s} dtk`;
+}
+
 function checkPin() {
   if (pinBuffer === ADMIN_PIN) {
     isAdmin = !isAdmin;
@@ -1127,23 +1136,32 @@ window.submitUtbOrder = async function() {
   try {
     const now = Date.now();
     await Promise.all(mySelected.map((a, i) =>
-  addDoc(ordersCol, {
-    buyer: utbUserName,
-    item: a.item,
-    price: a.price,
-    qty: a.qty || 1,
-    note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
-    paid: false,
-    date: today(),
-    createdAt: now + i,
-    source: 'utb',
-    lokasi: utbUserLokasi,
-    antrianId: a.firestoreId
-  })
-));
-    await Promise.all(mySelected.map(a =>
-      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName, claimedByLokasi: utbUserLokasi })
+      addDoc(ordersCol, {
+        buyer: utbUserName,
+        item: a.item,
+        price: a.price,
+        qty: a.qty || 1,
+        note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
+        paid: false,
+        date: today(),
+        createdAt: now + i,
+        source: 'utb',
+        lokasi: utbUserLokasi,
+        antrianId: a.firestoreId
+      })
     ));
+    
+    // PENTING: Tambahkan 'sentAt: now' di sini agar durasinya bisa dihitung nanti
+    await Promise.all(mySelected.map(a =>
+      updateDoc(doc(db, 'antrian', a.firestoreId), { 
+          sent: true, 
+          buyer: utbUserName, 
+          claimedBy: utbUserName, 
+          claimedByLokasi: utbUserLokasi,
+          sentAt: now // <-- Ini yang mencatat waktu UTB diorder
+      })
+    ));
+    
     closeUtbConfirm();
     showToast('Pesanan kamu berhasil dikirim! 🎉');
     setSyncBadge('ok');
