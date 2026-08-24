@@ -982,9 +982,30 @@ function renderAntrian() {
     return;
   }
 
+  // Fungsi untuk memformat durasi milidetik menjadi teks menit dan detik
+  const formatDuration = (ms) => {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    if (m === 0) return `${s} dtk`;
+    return `${m} mnt ${s} dtk`;
+  };
+
   const renderItem = (a) => {
     const sentClass = a.sent ? ' antrian-sent' : '';
     const buyerVal  = a.buyer ? a.buyer : '';
+    
+    // Perhitungan Durasi Sold
+    let soldTimeHtml = '';
+    // Pastikan item sudah 'sent' dan memiliki data waktu yang dibutuhkan (createdAt dan sentAt)
+    if (a.sent && a.createdAt && a.sentAt) {
+      const diffMs = a.sentAt - a.createdAt;
+      // Jangan tampilkan jika waktunya negatif (berarti ada data error/anomali)
+      if (diffMs >= 0) {
+        soldTimeHtml = `<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">⏱️ Sold in: ${formatDuration(diffMs)}</div>`;
+      }
+    }
+
     return `
       <div class="antrian-item${sentClass}" id="antrianItem-${a.firestoreId}">
         <div class="antrian-item-top">
@@ -993,6 +1014,9 @@ function renderAntrian() {
             ${a.note ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📝 ' + a.note + '</div>' : ''}
             ${antrianDateMode !== 'today' ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 ' + (a.date || '-') + '</div>' : ''}
             ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : '')}
+            
+            <!-- Tempat menampilkan durasi sold -->
+            ${soldTimeHtml}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <div class="antrian-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
@@ -1225,7 +1249,10 @@ window.renderMyOrders = function renderMyOrders() {
   const main       = document.getElementById('myOrdersMain');
   if (!namePrompt || !main) return;
 
-  const utbOrders = orders.filter(o => o.source === 'utb');
+  // PERUBAHAN UTAMA: Tambahkan filter o.date === today()
+  // Agar hanya pesanan UTB hari ini saja yang ditarik
+  const currentDate = today();
+  const utbOrders = orders.filter(o => o.source === 'utb' && o.date === currentDate);
 
   // Hilangkan form prompt nama UTB, langsung tampilkan halaman utama untuk semua user
   namePrompt.style.display = 'none';
@@ -1237,9 +1264,9 @@ window.renderMyOrders = function renderMyOrders() {
 
   let myOrders = utbOrders;
 
-  // Sesuaikan title dan deskripsi karena kini menampilkan semua pesanan
-  //document.getElementById('myOrdersTitle').textContent = '📦 Semua Pesanan UTB';
-  document.getElementById('myOrdersSub').textContent = 'Cari dan lihat riwayat pesanan UTB';
+  // Sesuaikan title dan deskripsi untuk menegaskan ini data HARI INI
+  document.getElementById('myOrdersTitle').textContent = '📦 Pesanan UTB Hari Ini';
+  document.getElementById('myOrdersSub').textContent = 'Cari dan lihat riwayat pesanan UTB masuk hari ini';
 
   // Eksekusi pencarian nama untuk semua user
   const searchEl = document.getElementById('filterMyOrdersBuyer');
@@ -1266,7 +1293,8 @@ window.renderMyOrders = function renderMyOrders() {
 
   const list = document.getElementById('myOrdersList');
   if (!myOrders.length) {
-    const msg = search ? 'Tidak ada pesanan dengan nama tersebut' : 'Belum ada pesanan UTB';
+    // Ubah pesan kosong jika data hari ini kosong
+    const msg = search ? 'Tidak ada pesanan dengan nama tersebut hari ini' : 'Belum ada pesanan UTB hari ini';
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">${msg}</div></div>`;
     return;
   }
