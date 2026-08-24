@@ -919,24 +919,31 @@ window.sendAntrianToOrder = async function(firestoreId) {
 
   setSyncBadge('loading');
   try {
-    await addDoc(ordersCol, { buyer, item: a.item, price: a.price, qty: a.qty || 1, note: a.note || '', paid: false, date: today(), createdAt: Date.now() });
-    await updateDoc(doc(db, 'antrian', firestoreId), { sent: true, buyer });
+    const now = Date.now();
+    // Tambahkan antrianId ke orders agar bisa dilacak & sinkron (wajib)
+    await addDoc(ordersCol, { 
+        buyer, 
+        item: a.item, 
+        price: a.price, 
+        qty: a.qty || 1, 
+        note: a.note || '', 
+        paid: false, 
+        date: today(), 
+        createdAt: now,
+        antrianId: firestoreId
+    });
+    
+    // PENTING: Simpan waktu 'sentAt' saat item diproses
+    await updateDoc(doc(db, 'antrian', firestoreId), { 
+        sent: true, 
+        buyer: buyer,
+        sentAt: now // Menyimpan waktu order diselesaikan
+    });
+    
     showToast(a.item + ' -> ' + buyer + ' dikirim ke Pesanan! ✓');
     setSyncBadge('ok');
   } catch(e) {
     showToast('Gagal kirim!', '❌'); setSyncBadge('err');
-  }
-};
-
-window.deleteAntrian = async function(firestoreId) {
-  if (!confirm('Hapus item antrian ini?')) return;
-  setSyncBadge('loading');
-  try {
-    await deleteDoc(doc(db, 'antrian', firestoreId));
-    showToast('Item antrian dihapus', '🗑️');
-    setSyncBadge('ok');
-  } catch(e) {
-    showToast('Gagal hapus!', '❌'); setSyncBadge('err');
   }
 };
 
@@ -1213,50 +1220,58 @@ window.deleteMyOrder = async function(firestoreId) {
   }
 };
 
-function renderMyOrders() {
+window.renderMyOrders = function renderMyOrders() {
   const namePrompt = document.getElementById('myOrdersNamePrompt');
   const main       = document.getElementById('myOrdersMain');
   if (!namePrompt || !main) return;
 
   const utbOrders = orders.filter(o => o.source === 'utb');
 
-  // User biasa wajib punya nama UTB dulu; admin selalu bisa lihat semua
-  if (!isAdmin && !utbUserName) {
-    namePrompt.style.display = 'block';
-    main.style.display = 'none';
-    return;
-  }
+  // Hilangkan form prompt nama UTB, langsung tampilkan halaman utama untuk semua user
   namePrompt.style.display = 'none';
   main.style.display = 'block';
 
-  document.getElementById('myOrdersAdminFilterWrap').style.display = isAdmin ? 'block' : 'none';
+  // Tampilkan form pencarian (filter) untuk semua user
+  const filterWrap = document.getElementById('myOrdersAdminFilterWrap');
+  if (filterWrap) filterWrap.style.display = 'block';
 
-  let myOrders = isAdmin ? utbOrders : utbOrders.filter(o => o.buyer === utbUserName);
+  let myOrders = utbOrders;
 
-  document.getElementById('myOrdersTitle').textContent = isAdmin ? '📦 Semua Pesanan UTB' : '📦 Pesanan Saya';
-  document.getElementById('myOrdersSub').textContent = isAdmin
-    ? 'Semua item yang sudah dipesan lewat UTB oleh semua pengguna'
-    : 'Item yang sudah kamu pesan lewat UTB';
+  // Sesuaikan title dan deskripsi karena kini menampilkan semua pesanan
+  //document.getElementById('myOrdersTitle').textContent = '📦 Semua Pesanan UTB';
+  document.getElementById('myOrdersSub').textContent = 'Cari dan lihat riwayat pesanan UTB';
 
-  if (isAdmin) {
-    const searchEl = document.getElementById('filterMyOrdersBuyer');
-    const search   = searchEl ? searchEl.value.toLowerCase().trim() : '';
-    if (search) myOrders = myOrders.filter(o => (o.buyer || '').toLowerCase().includes(search));
+  // Eksekusi pencarian nama untuk semua user
+  const searchEl = document.getElementById('filterMyOrdersBuyer');
+  const search   = searchEl ? searchEl.value.toLowerCase().trim() : '';
+  if (search) {
+    myOrders = myOrders.filter(o => (o.buyer || '').toLowerCase().includes(search));
   }
 
+  // Urutkan berdasarkan yang paling baru ditambahkan
   myOrders = myOrders.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
+  // Hitung dan render Total Harga (Ditampilkan untuk semua user)
   const total = myOrders.reduce((s, o) => s + (o.price || 0) * (o.qty || 1), 0);
-  document.getElementById('myOrdersTotal').textContent = rupiah(total);
+  const totalEl = document.getElementById('myOrdersTotal');
+  if (totalEl) {
+    totalEl.textContent = rupiah(total);
+    // Pastikan blok total selalu tampil
+    if (totalEl.parentElement) {
+      totalEl.parentElement.style.display = 'block'; 
+    }
+  }
+  
   document.getElementById('myOrdersCount').textContent = myOrders.length + ' item';
 
   const list = document.getElementById('myOrdersList');
   if (!myOrders.length) {
-    const msg = isAdmin ? 'Belum ada pesanan UTB' : 'Kamu belum pernah pesan lewat UTB';
+    const msg = search ? 'Tidak ada pesanan dengan nama tersebut' : 'Belum ada pesanan UTB';
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">${msg}</div></div>`;
     return;
   }
 
+  // Render daftar order
   list.innerHTML = myOrders.map(o => `
     <div class="order-item ${o.paid ? 'paid' : ''}">
       <div class="order-item-info">
@@ -1265,11 +1280,18 @@ function renderMyOrders() {
           <span class="badge ${o.paid ? 'badge-paid' : 'badge-unpaid'}">${o.paid ? '✓ Lunas' : '⏳ Belum'}</span>
           <span class="badge" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE">🧃 UTB</span>
         </div>
-        ${isAdmin ? '<div class="order-item-buyer">👤 ' + (o.buyer || '-') + (o.qty > 1 ? ' · x' + o.qty : '') + '</div>' : (o.qty > 1 ? '<div class="order-item-buyer">x' + o.qty + '</div>' : '')}
+        
+        <!-- Tampilkan nama pembeli untuk semua user -->
+        <div class="order-item-buyer">👤 ${o.buyer || '-'}${o.qty > 1 ? ' · x' + o.qty : ''}</div>
+        
         ${o.lokasi ? '<div class="order-item-details">📍 ' + o.lokasi + '</div>' : ''}
         <div class="order-item-date">📅 ${formatTanggalIndo(o.date)}</div>
-        ${isAdmin ? '<div class="order-item-actions"><button class="btn btn-sm btn-danger" onclick="deleteMyOrder(\'' + o.firestoreId + '\')">🗑 Hapus</button></div>' : ''}
+        
+        <!-- Tombol hapus tetap HANYA untuk Admin -->
+        ${isAdmin ? `<div class="order-item-actions"><button class="btn btn-sm btn-danger" onclick="deleteMyOrder('${o.firestoreId}')">🗑 Hapus</button></div>` : ''}
       </div>
+      
+      <!-- Harga per item DITAMPILKAN untuk semua user -->
       <div class="order-item-price">${rupiah((o.price || 0) * (o.qty || 1))}</div>
     </div>`).join('');
 }
