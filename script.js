@@ -1949,7 +1949,7 @@ function renderProducts() {
   empty.style.display = 'none';
 
   grid.innerHTML = products.map(p => `
-    <div class="product-card">
+    <div class="product-card" onclick="openProductDetail('${p.firestoreId}')">
       <div class="product-card-img-wrap">
         ${p.imageBase64
           ? `<img class="product-card-img" src="${p.imageBase64}" alt="${escapeHtml(p.name)}">`
@@ -1961,7 +1961,7 @@ function renderProducts() {
         ${p.desc ? `<div class="product-card-desc">${escapeHtml(p.desc)}</div>` : ''}
       </div>
       ${isAdmin ? `
-      <div class="product-card-admin-actions">
+      <div class="product-card-admin-actions" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-ghost" onclick="editProduct('${p.firestoreId}')">✏️ Edit</button>
         <button class="btn btn-sm btn-danger" onclick="deleteProduct('${p.firestoreId}')">🗑️ Hapus</button>
       </div>` : ''}
@@ -2138,6 +2138,30 @@ window.deleteProduct = async function(firestoreId) {
   }
 };
 
+window.openProductDetail = function(firestoreId) {
+  const p = products.find(x => x.firestoreId === firestoreId);
+  if (!p) return;
+
+  document.getElementById('productDetailName').textContent = p.name || 'Tanpa Nama';
+  document.getElementById('productDetailPrice').textContent = rupiah(p.price || 0);
+  document.getElementById('productDetailDesc').textContent = p.desc && p.desc.trim()
+    ? p.desc
+    : 'Tidak ada deskripsi untuk produk ini.';
+
+  const imgWrap = document.getElementById('productDetailImgWrap');
+  imgWrap.innerHTML = p.imageBase64
+    ? `<img src="${p.imageBase64}" alt="${escapeHtml(p.name)}">`
+    : `<div class="product-detail-img-placeholder">🍱</div>`;
+
+  document.getElementById('productDetailModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+};
+
+window.closeProductDetail = function() {
+  document.getElementById('productDetailModal').classList.remove('show');
+  document.body.style.overflow = '';
+};
+
 // ============================================================
 // QRIS
 // ============================================================
@@ -2236,6 +2260,10 @@ document.getElementById('qrisOverlay').addEventListener('click', function(e) {
 
 document.getElementById('utbConfirmModal').addEventListener('click', function(e) {
   if (e.target === this) window.closeUtbConfirm();
+});
+
+document.getElementById('productDetailModal').addEventListener('click', function(e) {
+  if (e.target === this) window.closeProductDetail();
 });
 
 // ============================================================
