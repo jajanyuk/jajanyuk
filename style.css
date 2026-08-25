@@ -33,6 +33,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
 .logo { display: flex; align-items: center; gap: 10px; }
 .logo-icon { width: 36px; height: 36px; background: rgba(255,255,255,0.25); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
 .logo-text { font-size: 20px; font-weight: 800; color: white; letter-spacing: -0.5px; }
+.sub-text { font-size: 14px; font-weight: 100; color: white; letter-spacing: -0.5px; text-align: right; font-family: 'Plus Jakarta Sans', sans-serif;}
 .logo-sub { font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 500; }
 .header-date { font-size: 12px; color: rgba(255,255,255,0.75); font-weight: 500; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 20px; }
 .sync-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
@@ -65,27 +66,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   0% { opacity: 0; transform: translateY(10px); }
   100% { opacity: 1; transform: translateY(0); }
 }
-.title-container {
-        display: inline-block; /* Membuat lebar container mengikuti panjang teks JajanYuk */
-        margin: 20px; /* Opsional: memberikan jarak dari tepi layar */
-    }
-    
-    .main-title {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        font-size: 36px;
-        font-weight: 800;
-        margin: 0; /* Menghilangkan jarak bawaan agar teks bawahnya bisa menempel */
-        color: #fafcfb;
-    }
-
-    .subtitle {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        font-size: 14px; /* Ukuran tulisan lebih kecil */
-        text-align: right; /* Membuat tulisan rata kanan */
-        margin: 0; 
-        font-weight: 500;
-        color: #fafcfb; /* Opsional: warna sedikit lebih pudar */
-    }
 .section-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .section-title span { font-size: 13px; font-weight: 500; color: var(--text2); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
