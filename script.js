@@ -2021,7 +2021,7 @@ window.saveProduct = async function() {
     resetProductForm();
   } catch (e) {
     console.error('Save product error:', e);
-    showToast('Gagal menyimpan produk!', '❌');
+    showToast('Gagal simpan: ' + (e.code || e.message || 'unknown'), '❌');
     setSyncBadge('err');
   } finally {
     btn.disabled = false;
@@ -2086,7 +2086,7 @@ window.deleteProduct = async function(firestoreId) {
     if (editingProductId === firestoreId) resetProductForm();
   } catch (e) {
     console.error('Delete product error:', e);
-    showToast('Gagal menghapus produk!', '❌');
+    showToast('Gagal hapus: ' + (e.code || e.message || 'unknown'), '❌');
     setSyncBadge('err');
   }
 };
