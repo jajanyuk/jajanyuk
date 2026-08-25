@@ -39,9 +39,8 @@
       </div>
     </div>
     <div class="nav">
-      <button class="nav-btn active" id="navHome" onclick="switchTab('home')"><span class="nav-icon">🏠</span>Home</button>
-	  <button class="nav-btn" id="navUtb" onclick="switchTab('utb')"><span class="nav-icon">🍽</span>UTB</button>
-      <button class="nav-btn" id="navQris" onclick="switchTab('qris')"><span class="nav-icon">📲</span>QRIS</button>
+      <button class="nav-btn" id="navUtb" onclick="switchTab('utb')"><span class="nav-icon">🧃</span>UTB</button>
+      <button class="nav-btn active" id="navQris" onclick="switchTab('qris')"><span class="nav-icon">📲</span>QRIS</button>
       <button class="nav-btn locked" id="navAntrian" onclick="switchTab('antrian')"><span class="nav-icon">🗒️</span>Antrian</button>
       <button class="nav-btn locked" id="navPesanan" onclick="switchTab('pesanan')"><span class="nav-icon">📋</span>Pesanan</button>
       <button class="nav-btn locked" id="navDeposit" onclick="switchTab('deposit')"><span class="nav-icon">💰</span>Deposit</button>
@@ -53,55 +52,6 @@
 
   <!-- CONTENT -->
   <div class="content">
-
-    <!-- TAB: HOME -->
-    <div class="tab-panel active" id="tab-utb">
-
-      <div class="home-hero">
-        <div class="home-hero-icon">🍽</div>
-        <div class="home-hero-title">Selamat Datang di JajanYuk!</div>
-        <div class="home-hero-sub">Yuk lihat semua menu jajanan</div>
-      </div>
-
-      <!-- ADMIN: Tambah / Edit Produk -->
-      <div class="card" id="productFormCard" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div class="section-title" style="margin-bottom:0" id="productFormTitle">🛍️ Tambah Produk</div>
-        </div>
-
-        <div class="product-form-upload" id="productUploadZone" onclick="document.getElementById('productImageInput').click()">
-          <img id="productImagePreview" style="display:none">
-          <div id="productUploadPlaceholder">
-            <div class="upload-icon">📷</div>
-            <div class="upload-text">Ketuk untuk unggah foto produk</div>
-          </div>
-        </div>
-        <input type="file" id="productImageInput" accept="image/*" style="display:none" onchange="handleProductImageUpload(event)">
-
-        <div class="form-group">
-          <label class="form-label">Nama Produk</label>
-          <input type="text" class="form-input" id="productName" placeholder="cth: Nasi Goreng Spesial" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Harga (Rp)</label>
-          <input type="number" class="form-input" id="productPrice" placeholder="15000" min="0">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Deskripsi</label>
-          <textarea class="form-input" id="productDesc" rows="3" style="resize:vertical" placeholder="cth: Nasi goreng dengan telur, ayam suwir, dan kerupuk"></textarea>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost" id="btnCancelProduct" style="display:none;flex:1;justify-content:center" onclick="cancelEditProduct()">✕ Batal</button>
-          <button class="btn btn-primary" id="btnSaveProduct" style="flex:2;justify-content:center" onclick="saveProduct()">➕ Simpan Produk</button>
-        </div>
-      </div>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="section-title" style="margin-bottom:0">🛍️ Produk Kami <span id="productCount">0 item</span></div>
-      </div>
-      <div id="productGrid" class="product-grid"></div>
-      <div id="productEmptyState" style="display:none"></div>
-    </div>
 
     <!-- TAB: ANTRIAN -->
     <div class="tab-panel" id="tab-antrian">
@@ -467,7 +417,7 @@
     </div>
 
     <!-- TAB: QRIS -->
-    <div class="tab-panel" id="tab-qris">
+    <div class="tab-panel active" id="tab-qris">
       <div id="qrisUploadCard" style="display:none"></div>
       <div id="qrisEmptyHint"  style="display:none"></div>
       <div id="qrisNominalList" style="display:none"></div>
@@ -542,20 +492,6 @@
     <div class="utb-confirm-actions">
       <button class="btn btn-ghost" onclick="closeUtbConfirm()" style="flex:1;justify-content:center">Batal</button>
       <button class="btn btn-primary" id="utbConfirmBtn" onclick="submitUtbOrder()" style="flex:1;justify-content:center">✅ Kirim Pesanan</button>
-    </div>
-  </div>
-</div>
-
-<!-- PRODUCT DETAIL MODAL -->
-<div id="productDetailModal">
-  <div class="product-detail-box">
-    <button class="product-detail-close" onclick="closeProductDetail()">✕</button>
-    <div class="product-detail-img-wrap" id="productDetailImgWrap"></div>
-    <div class="product-detail-body">
-      <div class="product-detail-name" id="productDetailName"></div>
-      <div class="product-detail-price" id="productDetailPrice"></div>
-      <div class="product-detail-desc-label">📝 Deskripsi</div>
-      <div class="product-detail-desc" id="productDetailDesc"></div>
     </div>
   </div>
 </div>
