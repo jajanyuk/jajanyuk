@@ -75,7 +75,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
         font-size: 36px;
         font-weight: 800;
         margin: 0; /* Menghilangkan jarak bawaan agar teks bawahnya bisa menempel */
-        color: #333;
+        color: #fafcfb;
     }
 
     .subtitle {
@@ -84,7 +84,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
         text-align: right; /* Membuat tulisan rata kanan */
         margin: 0; 
         font-weight: 500;
-        color: #666; /* Opsional: warna sedikit lebih pudar */
+        color: #fafcfb; /* Opsional: warna sedikit lebih pudar */
     }
 .section-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .section-title span { font-size: 13px; font-weight: 500; color: var(--text2); }
