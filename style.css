@@ -65,6 +65,27 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   0% { opacity: 0; transform: translateY(10px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+.title-container {
+        display: inline-block; /* Membuat lebar container mengikuti panjang teks JajanYuk */
+        margin: 20px; /* Opsional: memberikan jarak dari tepi layar */
+    }
+    
+    .main-title {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 36px;
+        font-weight: 800;
+        margin: 0; /* Menghilangkan jarak bawaan agar teks bawahnya bisa menempel */
+        color: #333;
+    }
+
+    .subtitle {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 14px; /* Ukuran tulisan lebih kecil */
+        text-align: right; /* Membuat tulisan rata kanan */
+        margin: 0; 
+        font-weight: 500;
+        color: #666; /* Opsional: warna sedikit lebih pudar */
+    }
 .section-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .section-title span { font-size: 13px; font-weight: 500; color: var(--text2); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
