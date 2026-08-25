@@ -39,7 +39,6 @@ const ordersCol   = collection(db, 'orders');
 const depositsCol = collection(db, 'deposits');
 const settingsCol = collection(db, 'settings');
 const antrianCol  = collection(db, 'antrian');
-const productsCol = collection(db, 'products');
 
 // ============================================================
 // STATE
@@ -47,14 +46,9 @@ const productsCol = collection(db, 'products');
 let orders         = [];
 let deposits       = [];
 let antrian        = [];
-let products       = [];
 let currentPeriod  = 'daily';
 let selectedBuyer  = null;
 let qrisOverlayNominal = '';
-
-// Product form state
-let pendingProductImageBase64 = null;
-let editingProductId = null;
 
 // Date filter state
 let antrianDateMode  = 'today';
@@ -118,15 +112,6 @@ function updatePinDots() {
   }
 }
 
-function formatDuration(ms) {
-  if (!ms || ms < 0) return '';
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  if (m === 0) return `${s} dtk`;
-  return `${m} mnt ${s} dtk`;
-}
-
 function checkPin() {
   if (pinBuffer === ADMIN_PIN) {
     isAdmin = !isAdmin;
@@ -147,21 +132,17 @@ function checkPin() {
 function applyAdminAccess() {
   const adminTabs = ['navAntrian', 'navPesanan', 'navDeposit', 'navRingkasan', 'navTagihan'];
   const badge = document.getElementById('adminBadge');
-  const productFormCard = document.getElementById('productFormCard');
   if (isAdmin) {
     adminTabs.forEach(id => document.getElementById(id).classList.remove('locked'));
     badge.textContent = '🛡️ Admin';
     badge.className = 'admin-badge is-admin';
-    if (productFormCard) productFormCard.style.display = 'block';
     switchTab('antrian');
   } else {
     adminTabs.forEach(id => document.getElementById(id).classList.add('locked'));
     badge.textContent = '👤 User';
     badge.className = 'admin-badge is-user';
-    if (productFormCard) productFormCard.style.display = 'none';
-    switchTab('home');
+    switchTab('qris');
   }
-  renderProducts();
 }
 
 // ============================================================
@@ -310,16 +291,6 @@ function startAntrianListener() {
   }, err => console.error('Antrian listener error:', err));
 }
 
-let productsListenerStarted = false;
-function startProductsListener() {
-  if (productsListenerStarted) return;
-  productsListenerStarted = true;
-  onSnapshot(query(productsCol, orderBy('createdAt', 'desc')), snap => {
-    products = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-    renderProducts();
-  }, err => console.error('Products listener error:', err));
-}
-
 // ============================================================
 // TAB SWITCHING
 // ============================================================
@@ -334,7 +305,7 @@ window.switchTab = function(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
 
-  const navMap = { home: 'navHome', antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', myorders: 'navMyOrders', qris: 'navQris' };
+  const navMap = { antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', myorders: 'navMyOrders', qris: 'navQris' };
   const navEl = document.getElementById(navMap[name]);
   if (navEl) {
     navEl.classList.add('active');
@@ -342,7 +313,6 @@ window.switchTab = function(name) {
   }
 
   // Load data on-demand: hanya start listener Firestore untuk tab yang baru dibuka
-  if (name === 'home')      { startProductsListener(); renderProducts(); }
   if (name === 'antrian')   { startAntrianListener(); renderAntrian(); }
   if (name === 'pesanan')   { startOrdersListener(); startDepositsListener(); window.renderOrders(); }
   if (name === 'ringkasan') { startOrdersListener(); renderSummary(); }
@@ -1012,30 +982,9 @@ function renderAntrian() {
     return;
   }
 
-  // Fungsi untuk memformat durasi milidetik menjadi teks menit dan detik
-  const formatDuration = (ms) => {
-    const totalSec = Math.floor(ms / 1000);
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    if (m === 0) return `${s} dtk`;
-    return `${m} mnt ${s} dtk`;
-  };
-
   const renderItem = (a) => {
     const sentClass = a.sent ? ' antrian-sent' : '';
     const buyerVal  = a.buyer ? a.buyer : '';
-    
-    // Perhitungan Durasi Sold
-    let soldTimeHtml = '';
-    // Pastikan item sudah 'sent' dan memiliki data waktu yang dibutuhkan (createdAt dan sentAt)
-    if (a.sent && a.createdAt && a.sentAt) {
-      const diffMs = a.sentAt - a.createdAt;
-      // Jangan tampilkan jika waktunya negatif (berarti ada data error/anomali)
-      if (diffMs >= 0) {
-        soldTimeHtml = `<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">⏱️ Sold in: ${formatDuration(diffMs)}</div>`;
-      }
-    }
-
     return `
       <div class="antrian-item${sentClass}" id="antrianItem-${a.firestoreId}">
         <div class="antrian-item-top">
@@ -1044,9 +993,6 @@ function renderAntrian() {
             ${a.note ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📝 ' + a.note + '</div>' : ''}
             ${antrianDateMode !== 'today' ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 ' + (a.date || '-') + '</div>' : ''}
             ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : '')}
-            
-            <!-- Tempat menampilkan durasi sold -->
-            ${soldTimeHtml}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <div class="antrian-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
@@ -1157,32 +1103,23 @@ window.submitUtbOrder = async function() {
   try {
     const now = Date.now();
     await Promise.all(mySelected.map((a, i) =>
-      addDoc(ordersCol, {
-        buyer: utbUserName,
-        item: a.item,
-        price: a.price,
-        qty: a.qty || 1,
-        note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
-        paid: false,
-        date: today(),
-        createdAt: now + i,
-        source: 'utb',
-        lokasi: utbUserLokasi,
-        antrianId: a.firestoreId
-      })
-    ));
-    
-    // PENTING: Tambahkan 'sentAt: now' di sini agar durasinya bisa dihitung nanti
+  addDoc(ordersCol, {
+    buyer: utbUserName,
+    item: a.item,
+    price: a.price,
+    qty: a.qty || 1,
+    note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
+    paid: false,
+    date: today(),
+    createdAt: now + i,
+    source: 'utb',
+    lokasi: utbUserLokasi,
+    antrianId: a.firestoreId
+  })
+));
     await Promise.all(mySelected.map(a =>
-      updateDoc(doc(db, 'antrian', a.firestoreId), { 
-          sent: true, 
-          buyer: utbUserName, 
-          claimedBy: utbUserName, 
-          claimedByLokasi: utbUserLokasi,
-          sentAt: now // <-- Ini yang mencatat waktu UTB diorder
-      })
+      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName, claimedByLokasi: utbUserLokasi })
     ));
-    
     closeUtbConfirm();
     showToast('Pesanan kamu berhasil dikirim! 🎉');
     setSyncBadge('ok');
@@ -1288,10 +1225,7 @@ window.renderMyOrders = function renderMyOrders() {
   const main       = document.getElementById('myOrdersMain');
   if (!namePrompt || !main) return;
 
-  // PERUBAHAN UTAMA: Tambahkan filter o.date === today()
-  // Agar hanya pesanan UTB hari ini saja yang ditarik
-  const currentDate = today();
-  const utbOrders = orders.filter(o => o.source === 'utb' && o.date === currentDate);
+  const utbOrders = orders.filter(o => o.source === 'utb');
 
   // Hilangkan form prompt nama UTB, langsung tampilkan halaman utama untuk semua user
   namePrompt.style.display = 'none';
@@ -1303,9 +1237,9 @@ window.renderMyOrders = function renderMyOrders() {
 
   let myOrders = utbOrders;
 
-  // Sesuaikan title dan deskripsi untuk menegaskan ini data HARI INI
-  document.getElementById('myOrdersTitle').textContent = '📦 Pesanan UTB Hari Ini';
-  document.getElementById('myOrdersSub').textContent = 'Cari dan lihat riwayat pesanan UTB masuk hari ini';
+  // Sesuaikan title dan deskripsi karena kini menampilkan semua pesanan
+  //document.getElementById('myOrdersTitle').textContent = '📦 Semua Pesanan UTB';
+  document.getElementById('myOrdersSub').textContent = 'Cari dan lihat riwayat pesanan UTB';
 
   // Eksekusi pencarian nama untuk semua user
   const searchEl = document.getElementById('filterMyOrdersBuyer');
@@ -1332,8 +1266,7 @@ window.renderMyOrders = function renderMyOrders() {
 
   const list = document.getElementById('myOrdersList');
   if (!myOrders.length) {
-    // Ubah pesan kosong jika data hari ini kosong
-    const msg = search ? 'Tidak ada pesanan dengan nama tersebut hari ini' : 'Belum ada pesanan UTB hari ini';
+    const msg = search ? 'Tidak ada pesanan dengan nama tersebut' : 'Belum ada pesanan UTB';
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">${msg}</div></div>`;
     return;
   }
@@ -1923,246 +1856,6 @@ window.shareBill = function(text) {
 };
 
 // ============================================================
-// PRODUCTS (TAB HOME)
-// ============================================================
-function renderProducts() {
-  const grid  = document.getElementById('productGrid');
-  const empty = document.getElementById('productEmptyState');
-  const count = document.getElementById('productCount');
-  if (!grid) return;
-
-  count.textContent = products.length + ' item';
-
-  if (!products.length) {
-    grid.innerHTML = '';
-    grid.style.display = 'none';
-    empty.style.display = 'block';
-    empty.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">🍽️</div>
-        <div class="empty-text">${isAdmin ? 'Belum ada produk. Tambahkan produk pertama kamu di atas!' : 'Belum ada produk yang tersedia saat ini.'}</div>
-      </div>`;
-    return;
-  }
-
-  grid.style.display = 'grid';
-  empty.style.display = 'none';
-
-  grid.innerHTML = products.map(p => `
-    <div class="product-card" onclick="openProductDetail('${p.firestoreId}')">
-      <div class="product-card-img-wrap">
-        ${p.imageBase64
-          ? `<img class="product-card-img" src="${p.imageBase64}" alt="${escapeHtml(p.name)}">`
-          : `<div class="product-card-img-placeholder">🍱</div>`}
-      </div>
-      <div class="product-card-body">
-        <div class="product-card-name">${escapeHtml(p.name || 'Tanpa Nama')}</div>
-        <div class="product-card-price">${rupiah(p.price || 0)}</div>
-        ${p.desc ? `<div class="product-card-desc">${escapeHtml(p.desc)}</div>` : ''}
-      </div>
-      ${isAdmin ? `
-      <div class="product-card-admin-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-sm btn-ghost" onclick="editProduct('${p.firestoreId}')">✏️ Edit</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteProduct('${p.firestoreId}')">🗑️ Hapus</button>
-      </div>` : ''}
-    </div>
-  `).join('');
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str ?? '';
-  return div.innerHTML;
-}
-
-function compressImage(file, maxDim = 800, quality = 0.72) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
-          else { width = Math.round(width * maxDim / height); height = maxDim; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        let q = quality;
-        let dataUrl = canvas.toDataURL('image/jpeg', q);
-        // Firestore doc limit ~1MB - kecilkan kualitas lagi kalau masih terlalu besar
-        let guard = 0;
-        while (dataUrl.length > 700000 && q > 0.3 && guard < 6) {
-          q -= 0.1;
-          dataUrl = canvas.toDataURL('image/jpeg', q);
-          guard++;
-        }
-        resolve(dataUrl);
-      };
-      img.onerror = () => reject(new Error('Gagal memuat gambar'));
-      img.src = e.target.result;
-    };
-    reader.onerror = () => reject(new Error('Gagal membaca file'));
-    reader.readAsDataURL(file);
-  });
-}
-
-window.handleProductImageUpload = async function(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const preview = document.getElementById('productImagePreview');
-  const placeholder = document.getElementById('productUploadPlaceholder');
-  try {
-    placeholder.innerHTML = `<div class="upload-icon">⏳</div><div class="upload-text">Memproses gambar...</div>`;
-    placeholder.style.display = 'block';
-    preview.style.display = 'none';
-
-    pendingProductImageBase64 = await compressImage(file);
-
-    preview.src = pendingProductImageBase64;
-    preview.style.display = 'block';
-    placeholder.style.display = 'none';
-  } catch (err) {
-    console.error('Compress image error:', err);
-    showToast('Gagal memproses gambar!', '❌');
-    placeholder.innerHTML = `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk unggah foto produk</div>`;
-    placeholder.style.display = 'block';
-    preview.style.display = 'none';
-  }
-};
-
-window.saveProduct = async function() {
-  const name  = document.getElementById('productName').value.trim();
-  const price = parseFloat(document.getElementById('productPrice').value);
-  const desc  = document.getElementById('productDesc').value.trim();
-
-  if (!name) { showToast('Nama produk wajib diisi!', '⚠️'); return; }
-  if (!price || price <= 0) { showToast('Harga produk wajib diisi!', '⚠️'); return; }
-
-  const btn = document.getElementById('btnSaveProduct');
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  btn.textContent = '⏳ Menyimpan...';
-  setSyncBadge('loading');
-
-  try {
-    const payload = { name, price, desc };
-    if (pendingProductImageBase64) payload.imageBase64 = pendingProductImageBase64;
-
-    if (editingProductId) {
-      await updateDoc(doc(db, 'products', editingProductId), payload);
-      showToast('Produk berhasil diperbarui! ✏️');
-    } else {
-      payload.imageBase64 = pendingProductImageBase64 || null;
-      payload.createdAt = serverTimestamp();
-      await addDoc(productsCol, payload);
-      showToast('Produk berhasil ditambahkan! 🎉');
-    }
-    setSyncBadge('ok');
-    resetProductForm();
-  } catch (e) {
-    console.error('Save product error:', e);
-    showToast('Gagal simpan: ' + (e.code || e.message || 'unknown'), '❌');
-    setSyncBadge('err');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = originalText;
-  }
-};
-
-window.editProduct = function(firestoreId) {
-  const p = products.find(x => x.firestoreId === firestoreId);
-  if (!p) return;
-  editingProductId = firestoreId;
-  pendingProductImageBase64 = null;
-
-  document.getElementById('productName').value = p.name || '';
-  document.getElementById('productPrice').value = p.price || '';
-  document.getElementById('productDesc').value = p.desc || '';
-
-  const preview = document.getElementById('productImagePreview');
-  const placeholder = document.getElementById('productUploadPlaceholder');
-  if (p.imageBase64) {
-    preview.src = p.imageBase64;
-    preview.style.display = 'block';
-    placeholder.style.display = 'none';
-  } else {
-    preview.style.display = 'none';
-    placeholder.style.display = 'block';
-  }
-
-  document.getElementById('productFormTitle').textContent = '✏️ Edit Produk';
-  document.getElementById('btnSaveProduct').textContent = '💾 Simpan Perubahan';
-  document.getElementById('btnCancelProduct').style.display = 'flex';
-  document.getElementById('productFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
-
-window.cancelEditProduct = function() {
-  resetProductForm();
-};
-
-function resetProductForm() {
-  editingProductId = null;
-  pendingProductImageBase64 = null;
-  document.getElementById('productName').value = '';
-  document.getElementById('productPrice').value = '';
-  document.getElementById('productDesc').value = '';
-  document.getElementById('productImageInput').value = '';
-  document.getElementById('productImagePreview').style.display = 'none';
-  const placeholderEl = document.getElementById('productUploadPlaceholder');
-  placeholderEl.innerHTML = `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk unggah foto produk</div>`;
-  placeholderEl.style.display = 'block';
-  document.getElementById('productFormTitle').textContent = '🛍️ Tambah Produk';
-  document.getElementById('btnSaveProduct').textContent = '➕ Simpan Produk';
-  document.getElementById('btnCancelProduct').style.display = 'none';
-}
-
-window.deleteProduct = async function(firestoreId) {
-  const p = products.find(x => x.firestoreId === firestoreId);
-  if (!p) return;
-  if (!confirm(`Hapus produk "${p.name}"?`)) return;
-  try {
-    setSyncBadge('loading');
-    await deleteDoc(doc(db, 'products', firestoreId));
-    showToast('Produk berhasil dihapus! 🗑️');
-    setSyncBadge('ok');
-    if (editingProductId === firestoreId) resetProductForm();
-  } catch (e) {
-    console.error('Delete product error:', e);
-    showToast('Gagal hapus: ' + (e.code || e.message || 'unknown'), '❌');
-    setSyncBadge('err');
-  }
-};
-
-window.openProductDetail = function(firestoreId) {
-  const p = products.find(x => x.firestoreId === firestoreId);
-  if (!p) return;
-
-  document.getElementById('productDetailName').textContent = p.name || 'Tanpa Nama';
-  document.getElementById('productDetailPrice').textContent = rupiah(p.price || 0);
-  document.getElementById('productDetailDesc').textContent = p.desc && p.desc.trim()
-    ? p.desc
-    : 'Tidak ada deskripsi untuk produk ini.';
-
-  const imgWrap = document.getElementById('productDetailImgWrap');
-  imgWrap.innerHTML = p.imageBase64
-    ? `<img src="${p.imageBase64}" alt="${escapeHtml(p.name)}">`
-    : `<div class="product-detail-img-placeholder">🍱</div>`;
-
-  document.getElementById('productDetailModal').classList.add('show');
-  document.body.style.overflow = 'hidden';
-};
-
-window.closeProductDetail = function() {
-  document.getElementById('productDetailModal').classList.remove('show');
-  document.body.style.overflow = '';
-};
-
-// ============================================================
 // QRIS
 // ============================================================
 function renderQris() {
@@ -2260,10 +1953,6 @@ document.getElementById('qrisOverlay').addEventListener('click', function(e) {
 
 document.getElementById('utbConfirmModal').addEventListener('click', function(e) {
   if (e.target === this) window.closeUtbConfirm();
-});
-
-document.getElementById('productDetailModal').addEventListener('click', function(e) {
-  if (e.target === this) window.closeProductDetail();
 });
 
 // ============================================================
