@@ -1975,19 +1975,64 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-window.handleProductImageUpload = function(event) {
+function compressImage(file, maxDim = 800, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let q = quality;
+        let dataUrl = canvas.toDataURL('image/jpeg', q);
+        // Firestore doc limit ~1MB - kecilkan kualitas lagi kalau masih terlalu besar
+        let guard = 0;
+        while (dataUrl.length > 700000 && q > 0.3 && guard < 6) {
+          q -= 0.1;
+          dataUrl = canvas.toDataURL('image/jpeg', q);
+          guard++;
+        }
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error('Gagal memuat gambar'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Gagal membaca file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+window.handleProductImageUpload = async function(event) {
   const file = event.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    pendingProductImageBase64 = e.target.result;
-    const preview = document.getElementById('productImagePreview');
-    const placeholder = document.getElementById('productUploadPlaceholder');
+  const preview = document.getElementById('productImagePreview');
+  const placeholder = document.getElementById('productUploadPlaceholder');
+  try {
+    placeholder.innerHTML = `<div class="upload-icon">⏳</div><div class="upload-text">Memproses gambar...</div>`;
+    placeholder.style.display = 'block';
+    preview.style.display = 'none';
+
+    pendingProductImageBase64 = await compressImage(file);
+
     preview.src = pendingProductImageBase64;
     preview.style.display = 'block';
     placeholder.style.display = 'none';
-  };
-  reader.readAsDataURL(file);
+  } catch (err) {
+    console.error('Compress image error:', err);
+    showToast('Gagal memproses gambar!', '❌');
+    placeholder.innerHTML = `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk unggah foto produk</div>`;
+    placeholder.style.display = 'block';
+    preview.style.display = 'none';
+  }
 };
 
 window.saveProduct = async function() {
@@ -2068,7 +2113,9 @@ function resetProductForm() {
   document.getElementById('productDesc').value = '';
   document.getElementById('productImageInput').value = '';
   document.getElementById('productImagePreview').style.display = 'none';
-  document.getElementById('productUploadPlaceholder').style.display = 'block';
+  const placeholderEl = document.getElementById('productUploadPlaceholder');
+  placeholderEl.innerHTML = `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk unggah foto produk</div>`;
+  placeholderEl.style.display = 'block';
   document.getElementById('productFormTitle').textContent = '🛍️ Tambah Produk';
   document.getElementById('btnSaveProduct').textContent = '➕ Simpan Produk';
   document.getElementById('btnCancelProduct').style.display = 'none';
