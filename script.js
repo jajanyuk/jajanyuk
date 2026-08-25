@@ -39,6 +39,7 @@ const ordersCol   = collection(db, 'orders');
 const depositsCol = collection(db, 'deposits');
 const settingsCol = collection(db, 'settings');
 const antrianCol  = collection(db, 'antrian');
+const productsCol = collection(db, 'products');
 
 // ============================================================
 // STATE
@@ -46,9 +47,14 @@ const antrianCol  = collection(db, 'antrian');
 let orders         = [];
 let deposits       = [];
 let antrian        = [];
+let products       = [];
 let currentPeriod  = 'daily';
 let selectedBuyer  = null;
 let qrisOverlayNominal = '';
+
+// Product form state
+let pendingProductImageBase64 = null;
+let editingProductId = null;
 
 // Date filter state
 let antrianDateMode  = 'today';
@@ -141,17 +147,21 @@ function checkPin() {
 function applyAdminAccess() {
   const adminTabs = ['navAntrian', 'navPesanan', 'navDeposit', 'navRingkasan', 'navTagihan'];
   const badge = document.getElementById('adminBadge');
+  const productFormCard = document.getElementById('productFormCard');
   if (isAdmin) {
     adminTabs.forEach(id => document.getElementById(id).classList.remove('locked'));
     badge.textContent = '🛡️ Admin';
     badge.className = 'admin-badge is-admin';
+    if (productFormCard) productFormCard.style.display = 'block';
     switchTab('antrian');
   } else {
     adminTabs.forEach(id => document.getElementById(id).classList.add('locked'));
     badge.textContent = '👤 User';
     badge.className = 'admin-badge is-user';
-    switchTab('qris');
+    if (productFormCard) productFormCard.style.display = 'none';
+    switchTab('home');
   }
+  renderProducts();
 }
 
 // ============================================================
@@ -300,6 +310,16 @@ function startAntrianListener() {
   }, err => console.error('Antrian listener error:', err));
 }
 
+let productsListenerStarted = false;
+function startProductsListener() {
+  if (productsListenerStarted) return;
+  productsListenerStarted = true;
+  onSnapshot(query(productsCol, orderBy('createdAt', 'desc')), snap => {
+    products = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+    renderProducts();
+  }, err => console.error('Products listener error:', err));
+}
+
 // ============================================================
 // TAB SWITCHING
 // ============================================================
@@ -314,7 +334,7 @@ window.switchTab = function(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
 
-  const navMap = { antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', myorders: 'navMyOrders', qris: 'navQris' };
+  const navMap = { home: 'navHome', antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', myorders: 'navMyOrders', qris: 'navQris' };
   const navEl = document.getElementById(navMap[name]);
   if (navEl) {
     navEl.classList.add('active');
@@ -322,6 +342,7 @@ window.switchTab = function(name) {
   }
 
   // Load data on-demand: hanya start listener Firestore untuk tab yang baru dibuka
+  if (name === 'home')      { startProductsListener(); renderProducts(); }
   if (name === 'antrian')   { startAntrianListener(); renderAntrian(); }
   if (name === 'pesanan')   { startOrdersListener(); startDepositsListener(); window.renderOrders(); }
   if (name === 'ringkasan') { startOrdersListener(); renderSummary(); }
@@ -1898,6 +1919,175 @@ window.shareBill = function(text) {
     navigator.share({ text }).catch(() => {});
   } else {
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+  }
+};
+
+// ============================================================
+// PRODUCTS (TAB HOME)
+// ============================================================
+function renderProducts() {
+  const grid  = document.getElementById('productGrid');
+  const empty = document.getElementById('productEmptyState');
+  const count = document.getElementById('productCount');
+  if (!grid) return;
+
+  count.textContent = products.length + ' item';
+
+  if (!products.length) {
+    grid.innerHTML = '';
+    grid.style.display = 'none';
+    empty.style.display = 'block';
+    empty.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🍽️</div>
+        <div class="empty-text">${isAdmin ? 'Belum ada produk. Tambahkan produk pertama kamu di atas!' : 'Belum ada produk yang tersedia saat ini.'}</div>
+      </div>`;
+    return;
+  }
+
+  grid.style.display = 'grid';
+  empty.style.display = 'none';
+
+  grid.innerHTML = products.map(p => `
+    <div class="product-card">
+      <div class="product-card-img-wrap">
+        ${p.imageBase64
+          ? `<img class="product-card-img" src="${p.imageBase64}" alt="${escapeHtml(p.name)}">`
+          : `<div class="product-card-img-placeholder">🍱</div>`}
+      </div>
+      <div class="product-card-body">
+        <div class="product-card-name">${escapeHtml(p.name || 'Tanpa Nama')}</div>
+        <div class="product-card-price">${rupiah(p.price || 0)}</div>
+        ${p.desc ? `<div class="product-card-desc">${escapeHtml(p.desc)}</div>` : ''}
+      </div>
+      ${isAdmin ? `
+      <div class="product-card-admin-actions">
+        <button class="btn btn-sm btn-ghost" onclick="editProduct('${p.firestoreId}')">✏️ Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteProduct('${p.firestoreId}')">🗑️ Hapus</button>
+      </div>` : ''}
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+
+window.handleProductImageUpload = function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    pendingProductImageBase64 = e.target.result;
+    const preview = document.getElementById('productImagePreview');
+    const placeholder = document.getElementById('productUploadPlaceholder');
+    preview.src = pendingProductImageBase64;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+};
+
+window.saveProduct = async function() {
+  const name  = document.getElementById('productName').value.trim();
+  const price = parseFloat(document.getElementById('productPrice').value);
+  const desc  = document.getElementById('productDesc').value.trim();
+
+  if (!name) { showToast('Nama produk wajib diisi!', '⚠️'); return; }
+  if (!price || price <= 0) { showToast('Harga produk wajib diisi!', '⚠️'); return; }
+
+  const btn = document.getElementById('btnSaveProduct');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = '⏳ Menyimpan...';
+  setSyncBadge('loading');
+
+  try {
+    const payload = { name, price, desc };
+    if (pendingProductImageBase64) payload.imageBase64 = pendingProductImageBase64;
+
+    if (editingProductId) {
+      await updateDoc(doc(db, 'products', editingProductId), payload);
+      showToast('Produk berhasil diperbarui! ✏️');
+    } else {
+      payload.imageBase64 = pendingProductImageBase64 || null;
+      payload.createdAt = serverTimestamp();
+      await addDoc(productsCol, payload);
+      showToast('Produk berhasil ditambahkan! 🎉');
+    }
+    setSyncBadge('ok');
+    resetProductForm();
+  } catch (e) {
+    console.error('Save product error:', e);
+    showToast('Gagal menyimpan produk!', '❌');
+    setSyncBadge('err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+};
+
+window.editProduct = function(firestoreId) {
+  const p = products.find(x => x.firestoreId === firestoreId);
+  if (!p) return;
+  editingProductId = firestoreId;
+  pendingProductImageBase64 = null;
+
+  document.getElementById('productName').value = p.name || '';
+  document.getElementById('productPrice').value = p.price || '';
+  document.getElementById('productDesc').value = p.desc || '';
+
+  const preview = document.getElementById('productImagePreview');
+  const placeholder = document.getElementById('productUploadPlaceholder');
+  if (p.imageBase64) {
+    preview.src = p.imageBase64;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+  } else {
+    preview.style.display = 'none';
+    placeholder.style.display = 'block';
+  }
+
+  document.getElementById('productFormTitle').textContent = '✏️ Edit Produk';
+  document.getElementById('btnSaveProduct').textContent = '💾 Simpan Perubahan';
+  document.getElementById('btnCancelProduct').style.display = 'flex';
+  document.getElementById('productFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+window.cancelEditProduct = function() {
+  resetProductForm();
+};
+
+function resetProductForm() {
+  editingProductId = null;
+  pendingProductImageBase64 = null;
+  document.getElementById('productName').value = '';
+  document.getElementById('productPrice').value = '';
+  document.getElementById('productDesc').value = '';
+  document.getElementById('productImageInput').value = '';
+  document.getElementById('productImagePreview').style.display = 'none';
+  document.getElementById('productUploadPlaceholder').style.display = 'block';
+  document.getElementById('productFormTitle').textContent = '🛍️ Tambah Produk';
+  document.getElementById('btnSaveProduct').textContent = '➕ Simpan Produk';
+  document.getElementById('btnCancelProduct').style.display = 'none';
+}
+
+window.deleteProduct = async function(firestoreId) {
+  const p = products.find(x => x.firestoreId === firestoreId);
+  if (!p) return;
+  if (!confirm(`Hapus produk "${p.name}"?`)) return;
+  try {
+    setSyncBadge('loading');
+    await deleteDoc(doc(db, 'products', firestoreId));
+    showToast('Produk berhasil dihapus! 🗑️');
+    setSyncBadge('ok');
+    if (editingProductId === firestoreId) resetProductForm();
+  } catch (e) {
+    console.error('Delete product error:', e);
+    showToast('Gagal menghapus produk!', '❌');
+    setSyncBadge('err');
   }
 };
 
