@@ -171,7 +171,10 @@ function formatTanggalIndo(dateStr) {
 function getDateOffset(daysAgo) {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + dd;
 }
 
 function getFilterDates(mode, fromId, toId) {
@@ -944,6 +947,18 @@ window.sendAntrianToOrder = async function(firestoreId) {
     setSyncBadge('ok');
   } catch(e) {
     showToast('Gagal kirim!', '❌'); setSyncBadge('err');
+  }
+};
+
+window.deleteAntrian = async function(firestoreId) {
+  if (!confirm('Hapus item antrian ini?')) return;
+  setSyncBadge('loading');
+  try {
+    await deleteDoc(doc(db, 'antrian', firestoreId));
+    showToast('Item antrian dihapus', '🗑️');
+    setSyncBadge('ok');
+  } catch(e) {
+    showToast('Gagal hapus!', '❌'); setSyncBadge('err');
   }
 };
 
