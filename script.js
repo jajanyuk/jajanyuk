@@ -1007,7 +1007,7 @@ function renderAntrian() {
             <div class="antrian-item-name">${a.item || '-'}${a.qty > 1 ? ' <span style="font-size:12px;color:var(--text3)">x' + a.qty + '</span>' : ''}</div>
             ${a.note ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📝 ' + a.note + '</div>' : ''}
             ${antrianDateMode !== 'today' ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 ' + (a.date || '-') + '</div>' : ''}
-            ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : '')}
+            ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : '')}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <div class="antrian-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
@@ -1615,15 +1615,44 @@ function renderSummary() {
 // ============================================================
 // TAGIHAN
 // ============================================================
+// Beberapa orang bisa punya nama yang sama persis (mis. dua "Budi" di lantai
+// berbeda). Supaya tidak tercampur jadi 1 tagihan, kelompokkan pembeli
+// berdasarkan nama + lokasi/lantai (kalau ada). Kalau lokasi tidak diisi,
+// tetap dikelompokkan berdasarkan nama saja seperti biasa.
+const BUYER_KEY_SEP = '\u241F'; // separator karakter khusus, aman dari nama/lokasi
+
+function buyerGroupKey(o) {
+  const name   = (o.buyer || '').trim();
+  const lokasi = (o.lokasi || '').trim();
+  return name + BUYER_KEY_SEP + lokasi;
+}
+
+function buyerGroupParts(key) {
+  const idx = key.indexOf(BUYER_KEY_SEP);
+  return idx === -1 ? { name: key, lokasi: '' } : { name: key.slice(0, idx), lokasi: key.slice(idx + 1) };
+}
+
+function buyerGroupLabel(name, lokasi) {
+  return lokasi ? `${name} · 📍 ${lokasi}` : name;
+}
+
+function jsStr(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 window.renderBuyerList = function() {
   const dateRange    = getFilterDates(tagihanDateMode, 'tagihanDateFrom', 'tagihanDateTo');
   const todayOrders  = filterByDateRange(orders, dateRange);
   const buyers       = {};
   todayOrders.forEach(o => {
-    if (!buyers[o.buyer]) buyers[o.buyer] = { total: 0, count: 0, unpaid: 0 };
-    buyers[o.buyer].total  += o.price * o.qty;
-    buyers[o.buyer].count  += 1;
-    if (!o.paid) buyers[o.buyer].unpaid += o.price * o.qty;
+    const key = buyerGroupKey(o);
+    if (!buyers[key]) {
+      const { name, lokasi } = buyerGroupParts(key);
+      buyers[key] = { name, lokasi, total: 0, count: 0, unpaid: 0 };
+    }
+    buyers[key].total  += o.price * o.qty;
+    buyers[key].count  += 1;
+    if (!o.paid) buyers[key].unpaid += o.price * o.qty;
   });
 
   const badge = document.getElementById('tagihanFilterBadge');
@@ -1663,7 +1692,9 @@ window.renderBuyerList = function() {
 
   let buyerEntries = Object.entries(buyers);
   if (tagihanSearch) {
-    buyerEntries = buyerEntries.filter(([name]) => name.toLowerCase().includes(tagihanSearch));
+    buyerEntries = buyerEntries.filter(([, d]) =>
+      d.name.toLowerCase().includes(tagihanSearch) || d.lokasi.toLowerCase().includes(tagihanSearch)
+    );
   }
 
   buyerEntries = buyerEntries.sort((a, b) => {
@@ -1678,8 +1709,8 @@ window.renderBuyerList = function() {
       valA = a[1].count; valB = b[1].count;
       return tagihanSortMode === 'asc' ? valA - valB : valB - valA;
     } else {
-      const na = a[0].toLowerCase();
-      const nb = b[0].toLowerCase();
+      const na = (a[1].name + a[1].lokasi).toLowerCase();
+      const nb = (b[1].name + b[1].lokasi).toLowerCase();
       return tagihanSortMode === 'asc' ? na.localeCompare(nb, 'id') : nb.localeCompare(na, 'id');
     }
   });
@@ -1690,19 +1721,21 @@ window.renderBuyerList = function() {
   }
 
   buyerDiv.innerHTML = `<div class="buyer-select">` +
-    buyerEntries.map(([name, d]) => {
+    buyerEntries.map(([key, d]) => {
       const isAllPaid = d.unpaid === 0;
-      const depTotal = getDepositTotalByName(name);
-      const depUsed  = getDepositUsedByName(name);
+      // Deposit tetap dicek berdasarkan nama saja (deposit belum dipisah per lokasi)
+      const depTotal = getDepositTotalByName(d.name);
+      const depUsed  = getDepositUsedByName(d.name);
       const depSisa  = depTotal - depUsed;
       const depBadge = depTotal > 0
         ? `<span style="font-size:10px;background:#EFF6FF;color:#1D4ED8;padding:2px 6px;border-radius:10px;font-weight:700;border:1px solid #BFDBFE;margin-left:4px">💰 Dep ${rupiah(depSisa)}</span>`
         : '';
+      const label = buyerGroupLabel(d.name, d.lokasi);
       return `
-      <div class="buyer-option ${selectedBuyer === name ? 'selected' : ''} ${isAllPaid ? 'all-paid' : ''}" onclick="selectBuyer('${name}')">
-        <div class="buyer-avatar" style="background:${d.unpaid > 0 ? 'var(--brand)' : 'var(--green-dark)'}">${initials(name)}</div>
+      <div class="buyer-option ${selectedBuyer === key ? 'selected' : ''} ${isAllPaid ? 'all-paid' : ''}" onclick="selectBuyer('${jsStr(key)}')">
+        <div class="buyer-avatar" style="background:${d.unpaid > 0 ? 'var(--brand)' : 'var(--green-dark)'}">${initials(d.name)}</div>
         <div class="buyer-info">
-          <div class="buyer-name">${name}${isAllPaid ? ' <span style="font-size:12px;background:#BBF7D0;color:#15803D;padding:1px 7px;border-radius:10px;font-weight:700">✓ LUNAS</span>' : ''}${depBadge}</div>
+          <div class="buyer-name">${label}${isAllPaid ? ' <span style="font-size:12px;background:#BBF7D0;color:#15803D;padding:1px 7px;border-radius:10px;font-weight:700">✓ LUNAS</span>' : ''}${depBadge}</div>
           <div class="buyer-total">${d.count} item · ${rupiah(d.total)} · ${d.unpaid > 0 ? '<span style="color:var(--brand);font-weight:700">⏳ Belum ' + rupiah(d.unpaid) + '</span>' : '<span style="color:#15803D;font-weight:700">✅ Lunas semua</span>'}</div>
         </div>
         <span style="font-size:18px">-></span>
@@ -1712,23 +1745,25 @@ window.renderBuyerList = function() {
   if (selectedBuyer) renderBill(selectedBuyer);
 };
 
-window.selectBuyer = function(name) {
-  selectedBuyer = name;
+window.selectBuyer = function(key) {
+  selectedBuyer = key;
   window.renderBuyerList();
-  renderBill(name);
+  renderBill(key);
 };
 
-function buildBillText(buyerName, onlyUnpaid) {
+function buildBillText(buyerKey, onlyUnpaid) {
+  const { name, lokasi } = buyerGroupParts(buyerKey);
   const dateRange   = getFilterDates(tagihanDateMode, 'tagihanDateFrom', 'tagihanDateTo');
   const rangeOrders = filterByDateRange(orders, dateRange);
-  const buyerOrders = rangeOrders.filter(o => o.buyer === buyerName && (onlyUnpaid ? !o.paid : true));
+  const buyerOrders = rangeOrders.filter(o => buyerGroupKey(o) === buyerKey && (onlyUnpaid ? !o.paid : true));
   if (!buyerOrders.length) return null;
   const total   = buyerOrders.reduce((s, o) => s + o.price * o.qty, 0);
   const d       = new Date();
   const dateStr = d.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
   const timeStr = d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+  const label   = buyerGroupLabel(name, lokasi);
 
-  let t = `🍜 *JAJANYUK*\n━━━━━━━━━━━━━━━━━━━\n📅 ${dateStr}, ${timeStr}\n👤 Pembeli: *${buyerName}*\n━━━━━━━━━━━━━━━━━━━\n*DETAIL PESANAN:*\n`;
+  let t = `🍜 *JAJANYUK*\n━━━━━━━━━━━━━━━━━━━\n📅 ${dateStr}, ${timeStr}\n👤 Pembeli: *${label}*\n━━━━━━━━━━━━━━━━━━━\n*DETAIL PESANAN:*\n`;
   buyerOrders.forEach(o => {
     const sub = o.price * o.qty;
     t += `• ${o.item}`;
@@ -1745,13 +1780,15 @@ function buildBillText(buyerName, onlyUnpaid) {
   return t;
 }
 
-function renderBill(buyerName) {
-  const billText = buildBillText(buyerName, false);
+function renderBill(buyerKey) {
+  const billText = buildBillText(buyerKey, false);
   if (!billText) return;
+  const { name, lokasi } = buyerGroupParts(buyerKey);
+  const label = buyerGroupLabel(name, lokasi);
   const escaped = billText.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
   document.getElementById('billPreview').innerHTML = `
     <div style="margin-top:16px">
-      <div class="section-title">🧾 Preview Tagihan — ${buyerName}</div>
+      <div class="section-title">🧾 Preview Tagihan — ${label}</div>
       <div class="bill-preview"><pre>${billText}</pre></div>
       <div class="bill-actions">
         <button class="btn btn-ghost btn-sm" onclick="copyBill(\`${escaped}\`)">📋 Copy</button>
@@ -1763,7 +1800,7 @@ function renderBill(buyerName) {
 function buildAllUnpaidText() {
   const dateRange   = getFilterDates(tagihanDateMode, 'tagihanDateFrom', 'tagihanDateTo');
   const todayUnpaid = filterByDateRange(orders, dateRange).filter(o => !o.paid);
-  const buyers      = [...new Set(todayUnpaid.map(o => o.buyer))];
+  const buyers      = [...new Set(todayUnpaid.map(o => buyerGroupKey(o)))];
   if (!buyers.length) return null;
 
   const d       = new Date();
@@ -1780,9 +1817,11 @@ function buildAllUnpaidText() {
   text += `📊 Urutan: ${sortLabel}\n━━━━━━━━━━━━━━━━━━━\n`;
 
   const buyerMap = {};
-  buyers.forEach(name => {
-    const bOrders = todayUnpaid.filter(o => o.buyer === name);
-    buyerMap[name] = {
+  buyers.forEach(key => {
+    const bOrders = todayUnpaid.filter(o => buyerGroupKey(o) === key);
+    const { name, lokasi } = buyerGroupParts(key);
+    buyerMap[key] = {
+      name, lokasi,
       orders: bOrders,
       total:  bOrders.reduce((s, o) => s + o.price * o.qty, 0),
       count:  bOrders.length,
@@ -1800,17 +1839,19 @@ function buildAllUnpaidText() {
         ? buyerMap[a].count - buyerMap[b].count
         : buyerMap[b].count - buyerMap[a].count;
     } else {
+      const na = (buyerMap[a].name + buyerMap[a].lokasi).toLowerCase();
+      const nb = (buyerMap[b].name + buyerMap[b].lokasi).toLowerCase();
       return tagihanSortMode === 'asc'
-        ? a.toLowerCase().localeCompare(b.toLowerCase(), 'id')
-        : b.toLowerCase().localeCompare(a.toLowerCase(), 'id');
+        ? na.localeCompare(nb, 'id')
+        : nb.localeCompare(na, 'id');
     }
   });
 
   let grandTotal = 0;
-  sortedBuyers.forEach((name, idx) => {
-    const { orders: bOrders, total: bTotal } = buyerMap[name];
+  sortedBuyers.forEach((key, idx) => {
+    const { orders: bOrders, total: bTotal, name, lokasi } = buyerMap[key];
     grandTotal += bTotal;
-    text += `\n👤 *${name}*\n`;
+    text += `\n👤 *${buyerGroupLabel(name, lokasi)}*\n`;
     bOrders.forEach(o => {
       text += `  • ${o.item}`;
       if (o.qty > 1) text += ` (x${o.qty})`;
