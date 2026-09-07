@@ -164,6 +164,14 @@ function formatTanggalIndo(dateStr) {
   if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+// Format durasi ms -> "mm:ss"
+function formatDurationMMSS(ms) {
+  if (ms == null || isNaN(ms) || ms < 0) return '-';
+  const totalSec = Math.floor(ms / 1000);
+  const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+  const ss = String(totalSec % 60).padStart(2, '0');
+  return mm + ':' + ss;
+}
 
 // ============================================================
 // DATE FILTER HELPERS
@@ -702,7 +710,11 @@ window.setInputMode = function(mode) {
   document.getElementById('btnModeBulk').style.cssText = !isManual
     ? 'font-size:12px;padding:6px 10px;background:var(--brand);color:white;border-color:var(--brand)'
     : 'font-size:12px;padding:6px 10px';
-  if (!isManual) document.getElementById('bulkPreview').style.display = 'none';
+  if (!isManual) {
+    document.getElementById('bulkPreview').style.display = 'none';
+    const dateEl = document.getElementById('bulkDate');
+    if (dateEl && !dateEl.value) dateEl.value = today();
+  }
 };
 
 function parseBulkLine(line) {
@@ -755,6 +767,8 @@ window.submitBulk = async function() {
     if (!confirm(`${invalid.length} baris punya format salah dan akan dilewati. Lanjut masukkan ${valid.length} pesanan yang valid?`)) return;
   }
 
+  const bulkDate = document.getElementById('bulkDate')?.value || today();
+
   const btn = document.getElementById('btnSubmitBulk');
   btn.disabled = true;
   btn.textContent = '⏳ Menyimpan...';
@@ -765,11 +779,12 @@ window.submitBulk = async function() {
     await Promise.all(valid.map((r, i) =>
       addDoc(ordersCol, {
         buyer: r.buyer, item: r.item, price: r.price, qty: 1, note: '',
-        paid: false, date: today(), createdAt: now + i
+        paid: false, date: bulkDate, createdAt: now + i
       })
     ));
     document.getElementById('bulkInput').value = '';
     document.getElementById('bulkPreview').style.display = 'none';
+    document.getElementById('bulkDate').value = today();
     showToast(`${valid.length} pesanan berhasil ditambahkan! 🎉`);
   } catch(e) {
     showToast('Gagal menyimpan bulk!', '❌'); setSyncBadge('err');
@@ -793,7 +808,11 @@ window.setAntrianMode = function(mode) {
   document.getElementById('btnAntrianBulk').style.cssText = !isManual
     ? 'font-size:12px;padding:6px 10px;background:var(--brand);color:white;border-color:var(--brand)'
     : 'font-size:12px;padding:6px 10px';
-  if (!isManual) document.getElementById('antrianBulkPreview').style.display = 'none';
+  if (!isManual) {
+    document.getElementById('antrianBulkPreview').style.display = 'none';
+    const dateEl = document.getElementById('antrianBulkDate');
+    if (dateEl && !dateEl.value) dateEl.value = today();
+  }
 };
 
 window.addAntrian = async function() {
@@ -885,6 +904,8 @@ window.submitAntrianBulk = async function() {
   if (!valid.length) { showToast('Tidak ada data valid!', '⚠️'); return; }
   if (invalid.length > 0 && !confirm(invalid.length + ' baris error akan dilewati. Lanjut masukkan ' + valid.length + ' item?')) return;
 
+  const bulkDate = document.getElementById('antrianBulkDate')?.value || today();
+
   const btn = document.getElementById('btnSubmitAntrianBulk');
   btn.disabled = true;
   btn.textContent = '⏳ Menyimpan...';
@@ -892,16 +913,17 @@ window.submitAntrianBulk = async function() {
   try {
     const now = Date.now();
     await Promise.all(valid.map((r, i) =>
-      addDoc(antrianCol, { item: r.item, price: r.price, qty: 1, note: '', buyer: r.buyer || '', date: today(), sent: !!r.buyer, claimedBy: r.buyer || null, createdAt: now + i })
+      addDoc(antrianCol, { item: r.item, price: r.price, qty: 1, note: '', buyer: r.buyer || '', date: bulkDate, sent: !!r.buyer, claimedBy: r.buyer || null, createdAt: now + i, sentAt: r.buyer ? (now + i) : null })
     ));
     const withBuyer = valid.filter(r => r.buyer);
     if (withBuyer.length) {
       await Promise.all(withBuyer.map((r, i) =>
-        addDoc(ordersCol, { buyer: r.buyer, item: r.item, price: r.price, qty: 1, note: '', paid: false, date: today(), createdAt: now + i })
+        addDoc(ordersCol, { buyer: r.buyer, item: r.item, price: r.price, qty: 1, note: '', paid: false, date: bulkDate, createdAt: now + i })
       ));
     }
     document.getElementById('antrianBulkInput').value = '';
     document.getElementById('antrianBulkPreview').style.display = 'none';
+    document.getElementById('antrianBulkDate').value = today();
     showToast(valid.length + ' item ditambahkan ke antrian! 🎉');
     setSyncBadge('ok');
   } catch(e) {
@@ -1008,6 +1030,7 @@ function renderAntrian() {
             ${a.note ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📝 ' + a.note + '</div>' : ''}
             ${antrianDateMode !== 'today' ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 ' + (a.date || '-') + '</div>' : ''}
             ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : '')}
+            ${a.sent && a.sentAt && a.createdAt ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">⏱ Diproses: ' + formatDurationMMSS(a.sentAt - a.createdAt) + ' (mm:ss)</div>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <div class="antrian-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
@@ -1133,7 +1156,7 @@ window.submitUtbOrder = async function() {
   })
 ));
     await Promise.all(mySelected.map(a =>
-      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName, claimedByLokasi: utbUserLokasi })
+      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName, claimedByLokasi: utbUserLokasi, sentAt: Date.now() })
     ));
     closeUtbConfirm();
     showToast('Pesanan kamu berhasil dikirim! 🎉');
