@@ -39,7 +39,6 @@ const ordersCol   = collection(db, 'orders');
 const depositsCol = collection(db, 'deposits');
 const settingsCol = collection(db, 'settings');
 const antrianCol  = collection(db, 'antrian');
-const productsCol = collection(db, 'products');
 
 // ============================================================
 // STATE
@@ -66,14 +65,6 @@ let ringSortMode     = 'asc';
 // UTB state
 let utbUserName = null;
 let utbUserLokasi = null;
-
-// Products (Beranda/Katalog) state
-let products = [];
-let productsListenerStarted = false;
-let editingProductId = null;
-let productImageData = null;
-let activeProductDetailId = null;
-let productSortableInstance = null;
 
 // ============================================================
 // ADMIN STATE
@@ -141,22 +132,17 @@ function checkPin() {
 function applyAdminAccess() {
   const adminTabs = ['navAntrian', 'navPesanan', 'navDeposit', 'navRingkasan', 'navTagihan'];
   const badge = document.getElementById('adminBadge');
-  const btnOpenProductForm = document.getElementById('btnOpenProductForm');
   if (isAdmin) {
     adminTabs.forEach(id => document.getElementById(id).classList.remove('locked'));
     badge.textContent = '🛡️ Admin';
     badge.className = 'admin-badge is-admin';
-    if (btnOpenProductForm) btnOpenProductForm.style.display = '';
     switchTab('antrian');
   } else {
     adminTabs.forEach(id => document.getElementById(id).classList.add('locked'));
     badge.textContent = '👤 User';
     badge.className = 'admin-badge is-user';
-    if (btnOpenProductForm) btnOpenProductForm.style.display = 'none';
-    closeProductForm();
-    switchTab('beranda');
+    switchTab('qris');
   }
-  if (document.getElementById('tab-beranda').classList.contains('active')) renderProducts();
 }
 
 // ============================================================
@@ -218,6 +204,15 @@ function getFilterDates(mode, fromId, toId) {
 function filterByDateRange(items, range) {
   if (!range) return items;
   return items.filter(o => o.date >= range.from && o.date <= range.to);
+}
+
+// Label periode tagihan berdasarkan filter tanggal yang aktif (mengikuti tanggal antrian,
+// bukan tanggal hari ini, supaya item yang di-backdate/dimajukan tetap tampil benar)
+function getTagihanPeriodLabel() {
+  const range = getFilterDates(tagihanDateMode, 'tagihanDateFrom', 'tagihanDateTo');
+  if (!range) return 'Semua Tanggal';
+  if (range.from === range.to) return formatTanggalIndo(range.from);
+  return formatTanggalIndo(range.from) + ' s/d ' + formatTanggalIndo(range.to);
 }
 
 function setDateFilterShortcuts(mode, prefix) {
@@ -316,18 +311,6 @@ function startAntrianListener() {
   }, err => console.error('Antrian listener error:', err));
 }
 
-function startProductsListener() {
-  if (productsListenerStarted) return;
-  productsListenerStarted = true;
-  onSnapshot(query(productsCol, orderBy('createdAt', 'desc')), snap => {
-    products = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-    if (document.getElementById('tab-beranda').classList.contains('active')) renderProducts();
-  }, err => {
-    console.error('Products listener error:', err);
-    setSyncBadge('err');
-  });
-}
-
 // ============================================================
 // TAB SWITCHING
 // ============================================================
@@ -342,7 +325,7 @@ window.switchTab = function(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
 
-  const navMap = { beranda: 'navBeranda', antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', myorders: 'navMyOrders', qris: 'navQris' };
+  const navMap = { antrian: 'navAntrian', pesanan: 'navPesanan', deposit: 'navDeposit', ringkasan: 'navRingkasan', tagihan: 'navTagihan', utb: 'navUtb', myorders: 'navMyOrders', qris: 'navQris' };
   const navEl = document.getElementById(navMap[name]);
   if (navEl) {
     navEl.classList.add('active');
@@ -350,7 +333,6 @@ window.switchTab = function(name) {
   }
 
   // Load data on-demand: hanya start listener Firestore untuk tab yang baru dibuka
-  if (name === 'beranda')   { startProductsListener(); renderProducts(); }
   if (name === 'antrian')   { startAntrianListener(); renderAntrian(); }
   if (name === 'pesanan')   { startOrdersListener(); startDepositsListener(); window.renderOrders(); }
   if (name === 'ringkasan') { startOrdersListener(); renderSummary(); }
@@ -980,7 +962,7 @@ window.sendAntrianToOrder = async function(firestoreId) {
         qty: a.qty || 1, 
         note: a.note || '', 
         paid: false, 
-        date: today(), 
+        date: a.date || today(), 
         createdAt: now,
         antrianId: firestoreId
     });
@@ -1175,7 +1157,7 @@ window.submitUtbOrder = async function() {
     qty: a.qty || 1,
     note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
     paid: false,
-    date: today(),
+    date: a.date || today(),
     createdAt: now + i,
     source: 'utb',
     lokasi: utbUserLokasi,
@@ -1360,273 +1342,6 @@ window.renderMyOrders = function renderMyOrders() {
       <div class="order-item-price">${rupiah((o.price || 0) * (o.qty || 1))}</div>
     </div>`).join('');
 }
-
-// ============================================================
-// BERANDA / KATALOG PRODUK
-// ============================================================
-window.openProductForm = function(editId) {
-  editingProductId = editId || null;
-  productImageData = null;
-
-  const title     = document.getElementById('productFormTitle');
-  const dropzone  = document.getElementById('productImageDropzone');
-  const nameEl    = document.getElementById('productName');
-  const descEl    = document.getElementById('productDesc');
-  const priceEl   = document.getElementById('productPrice');
-  const availEl   = document.getElementById('productAvailable');
-  const availHint = document.getElementById('productAvailableHint');
-  const saveBtn   = document.getElementById('btnSaveProduct');
-
-  if (editingProductId) {
-    const p = products.find(x => x.firestoreId === editingProductId);
-    if (!p) return;
-    title.textContent = '✏️ Edit Produk';
-    nameEl.value  = p.name || '';
-    descEl.value  = p.desc || '';
-    priceEl.value = p.price || '';
-    availEl.checked = p.available !== false;
-    availHint.textContent = availEl.checked ? 'Produk tersedia & bisa dipesan' : 'Produk ditandai Habis';
-    productImageData = p.imageBase64 || null;
-    dropzone.innerHTML = productImageData
-      ? `<img src="${productImageData}" alt="preview">`
-      : `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk upload gambar produk</div>`;
-    saveBtn.textContent = '💾 Simpan Perubahan';
-  } else {
-    title.textContent = '➕ Tambah Produk Baru';
-    nameEl.value = '';
-    descEl.value = '';
-    priceEl.value = '';
-    availEl.checked = true;
-    availHint.textContent = 'Produk tersedia & bisa dipesan';
-    dropzone.innerHTML = `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk upload gambar produk</div>`;
-    saveBtn.textContent = '💾 Simpan Produk';
-  }
-
-  document.getElementById('productFormCard').style.display = 'block';
-  document.getElementById('productFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
-
-window.closeProductForm = function() {
-  editingProductId = null;
-  productImageData = null;
-  const card = document.getElementById('productFormCard');
-  if (card) card.style.display = 'none';
-  const fileInput = document.getElementById('productImageInput');
-  if (fileInput) fileInput.value = '';
-};
-
-window.handleProductImageUpload = function(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  if (file.size > 3 * 1024 * 1024) {
-    showToast('Ukuran gambar maksimal 3MB', '⚠️');
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    productImageData = e.target.result;
-    document.getElementById('productImageDropzone').innerHTML = `<img src="${productImageData}" alt="preview">`;
-  };
-  reader.readAsDataURL(file);
-};
-
-window.saveProduct = async function() {
-  const name  = document.getElementById('productName').value.trim();
-  const desc  = document.getElementById('productDesc').value.trim();
-  const price = parseFloat(document.getElementById('productPrice').value);
-  const available = document.getElementById('productAvailable').checked;
-
-  if (!name || isNaN(price) || price < 0) {
-    showToast('Lengkapi nama produk dan harga!', '⚠️');
-    return;
-  }
-
-  const saveBtn = document.getElementById('btnSaveProduct');
-  saveBtn.disabled = true;
-  setSyncBadge('loading');
-
-  try {
-    if (editingProductId) {
-      await updateDoc(doc(db, 'products', editingProductId), {
-        name, desc, price, available,
-        imageBase64: productImageData || null
-      });
-      showToast('Produk berhasil diperbarui! ✏️');
-    } else {
-      const maxOrder = products.reduce((m, p) => typeof p.order === 'number' ? Math.max(m, p.order) : m, -1);
-      await addDoc(productsCol, {
-        name, desc, price, available,
-        imageBase64: productImageData || null,
-        order: maxOrder + 1,
-        createdAt: serverTimestamp()
-      });
-      showToast('Produk berhasil ditambahkan! 🎉');
-    }
-    setSyncBadge('ok');
-    closeProductForm();
-  } catch (err) {
-    console.error(err);
-    showToast('Gagal menyimpan produk. Cek koneksi!', '❌');
-    setSyncBadge('err');
-  } finally {
-    saveBtn.disabled = false;
-  }
-};
-
-window.editProduct = function(firestoreId) {
-  openProductForm(firestoreId);
-};
-
-window.deleteProduct = async function(firestoreId) {
-  if (!confirm('Hapus produk ini dari katalog?')) return;
-  try {
-    setSyncBadge('loading');
-    await deleteDoc(doc(db, 'products', firestoreId));
-    showToast('Produk dihapus 🗑️');
-    setSyncBadge('ok');
-  } catch (err) {
-    showToast('Gagal menghapus produk!', '❌');
-    setSyncBadge('err');
-  }
-};
-
-window.openProductDetail = function(firestoreId) {
-  const p = products.find(x => x.firestoreId === firestoreId);
-  if (!p) return;
-  activeProductDetailId = firestoreId;
-
-  const isHabis = p.available === false;
-  const imgWrap = document.getElementById('productDetailImgWrap');
-  imgWrap.classList.toggle('unavailable', isHabis);
-  imgWrap.innerHTML = (p.imageBase64
-    ? `<img src="${p.imageBase64}" alt="${p.name || ''}">`
-    : `<div class="product-detail-img-placeholder">🍱</div>`)
-    + (isHabis ? `<span class="product-badge habis">Stok Habis</span>` : '');
-
-  document.getElementById('productDetailName').textContent  = p.name || '-';
-  document.getElementById('productDetailPrice').textContent = rupiah(p.price || 0);
-  document.getElementById('productDetailDesc').textContent  = p.desc && p.desc.trim() ? p.desc : 'Belum ada deskripsi untuk produk ini.';
-
-  const adminActions = document.getElementById('productDetailAdminActions');
-  adminActions.style.display = isAdmin ? 'flex' : 'none';
-
-  document.getElementById('productDetailModal').classList.add('show');
-  document.body.style.overflow = 'hidden';
-};
-
-window.closeProductDetail = function() {
-  activeProductDetailId = null;
-  document.getElementById('productDetailModal').classList.remove('show');
-  document.body.style.overflow = '';
-};
-
-window.editProductFromDetail = function() {
-  const id = activeProductDetailId;
-  closeProductDetail();
-  if (id) openProductForm(id);
-};
-
-window.deleteProductFromDetail = async function() {
-  const id = activeProductDetailId;
-  if (!id) return;
-  closeProductDetail();
-  await deleteProduct(id);
-};
-
-function sortProductsForDisplay(list) {
-  return [...list].sort((a, b) => {
-    const ao = typeof a.order === 'number' ? a.order : Infinity;
-    const bo = typeof b.order === 'number' ? b.order : Infinity;
-    if (ao !== bo) return ao - bo;
-    const at = a.createdAt?.seconds || 0;
-    const bt = b.createdAt?.seconds || 0;
-    return bt - at;
-  });
-}
-
-async function persistProductOrder() {
-  const cards = Array.from(document.querySelectorAll('#productGrid .product-card'));
-  const ids   = cards.map(c => c.dataset.id);
-  setSyncBadge('loading');
-  try {
-    await Promise.all(ids.map((id, idx) => {
-      const p = products.find(x => x.firestoreId === id);
-      if (p) p.order = idx;
-      return updateDoc(doc(db, 'products', id), { order: idx });
-    }));
-    setSyncBadge('ok');
-  } catch (err) {
-    console.error(err);
-    showToast('Gagal menyimpan urutan produk!', '❌');
-    setSyncBadge('err');
-  }
-}
-
-function initProductSortable() {
-  const grid = document.getElementById('productGrid');
-  if (!grid) return;
-  if (productSortableInstance) { productSortableInstance.destroy(); productSortableInstance = null; }
-  if (!isAdmin || products.length < 2 || typeof Sortable === 'undefined') return;
-  productSortableInstance = Sortable.create(grid, {
-    animation: 200,
-    handle: '.product-drag-handle',
-    ghostClass: 'product-card-ghost',
-    chosenClass: 'product-card-chosen',
-    dragClass: 'product-card-drag',
-    onEnd: () => persistProductOrder()
-  });
-}
-
-function renderProducts() {
-  const grid      = document.getElementById('productGrid');
-  const emptyHint = document.getElementById('productEmptyHint');
-  const countEl   = document.getElementById('productCount');
-  const sortHint  = document.getElementById('productSortHint');
-
-  if (countEl) countEl.textContent = products.length + ' item';
-  if (sortHint) sortHint.style.display = (isAdmin && products.length > 1) ? 'block' : 'none';
-
-  if (!products.length) {
-    grid.innerHTML = '';
-    emptyHint.style.display = 'block';
-    initProductSortable();
-    return;
-  }
-  emptyHint.style.display = 'none';
-
-  const sorted = sortProductsForDisplay(products);
-
-  grid.innerHTML = sorted.map(p => {
-    const isHabis = p.available === false;
-    return `
-    <div class="product-card ${isHabis ? 'unavailable' : ''}" data-id="${p.firestoreId}">
-      ${isAdmin ? `<div class="product-drag-handle" onclick="event.stopPropagation()" title="Seret untuk ubah urutan">⠿</div>` : ''}
-      <div class="product-card-img-wrap" onclick="openProductDetail('${p.firestoreId}')">
-        ${p.imageBase64
-          ? `<img class="product-card-img" src="${p.imageBase64}" alt="${p.name || ''}">`
-          : `<div class="product-card-img-placeholder">🍱</div>`}
-        ${isHabis ? `<span class="product-badge habis">Stok Habis</span>` : ''}
-      </div>
-      <div class="product-card-body" onclick="openProductDetail('${p.firestoreId}')">
-        <div class="product-card-name">${p.name || '-'}</div>
-        <div class="product-card-price">${rupiah(p.price || 0)}</div>
-        ${p.desc ? `<div class="product-card-desc">${p.desc}</div>` : ''}
-      </div>
-      ${isAdmin ? `
-      <div class="product-card-admin-actions">
-        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editProduct('${p.firestoreId}')">✏️ Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteProduct('${p.firestoreId}')">🗑️ Hapus</button>
-      </div>` : ''}
-    </div>
-  `;
-  }).join('');
-
-  initProductSortable();
-}
-
-document.getElementById('productDetailModal').addEventListener('click', function(e) {
-  if (e.target === this) window.closeProductDetail();
-});
 
 // ============================================================
 // DEPOSIT
@@ -2074,13 +1789,14 @@ function buildBillText(buyerKey, onlyUnpaid) {
   const rangeOrders = filterByDateRange(orders, dateRange);
   const buyerOrders = rangeOrders.filter(o => buyerGroupKey(o) === buyerKey && (onlyUnpaid ? !o.paid : true));
   if (!buyerOrders.length) return null;
-  const total   = buyerOrders.reduce((s, o) => s + o.price * o.qty, 0);
-  const d       = new Date();
-  const dateStr = d.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
-  const timeStr = d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
-  const label   = buyerGroupLabel(name, lokasi);
+  const total    = buyerOrders.reduce((s, o) => s + o.price * o.qty, 0);
+  const d        = new Date();
+  const dateStr  = d.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
+  const timeStr  = d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+  const periode  = getTagihanPeriodLabel();
+  const label    = buyerGroupLabel(name, lokasi);
 
-  let t = `🍜 *JAJANYUK*\n━━━━━━━━━━━━━━━━━━━\n📅 ${dateStr}, ${timeStr}\n👤 Pembeli: *${label}*\n━━━━━━━━━━━━━━━━━━━\n*DETAIL PESANAN:*\n`;
+  let t = `🍜 *JAJANYUK*\n━━━━━━━━━━━━━━━━━━━\n📅 Periode: ${periode}\n🖨️ Dicetak: ${dateStr}, ${timeStr}\n👤 Pembeli: *${label}*\n━━━━━━━━━━━━━━━━━━━\n*DETAIL PESANAN:*\n`;
   buyerOrders.forEach(o => {
     const sub = o.price * o.qty;
     t += `• ${o.item}`;
@@ -2123,8 +1839,9 @@ function buildAllUnpaidText() {
   const d       = new Date();
   const dateStr = d.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
   const timeStr = d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+  const periode = getTagihanPeriodLabel();
 
-  let text = `🍉 *JAJANYUK — REKAP PESANAN*\n📅 ${dateStr}, ${timeStr}\n━━━━━━━━━━━━━━━━━━━\n`;
+  let text = `🍉 *JAJANYUK — REKAP PESANAN*\n📅 Periode: ${periode}\n🖨️ Dicetak: ${dateStr}, ${timeStr}\n━━━━━━━━━━━━━━━━━━━\n`;
 
   const sortLabels = { name: 'Nama (A-Z)', total: 'Total Tagihan', unpaid: 'Belum Bayar', count: 'Jml Item' };
   const sortDir    = tagihanSortMode === 'asc' ? '↑ Terkecil->Terbesar' : '↓ Terbesar->Terkecil';
