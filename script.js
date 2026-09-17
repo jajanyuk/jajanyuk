@@ -432,11 +432,12 @@ function updateDeleteDateInfo() {
 // PESANAN — CRUD
 // ============================================================
 window.addOrder = async function() {
-  const buyer = document.getElementById('inBuyer').value.trim();
-  const item  = document.getElementById('inItem').value.trim();
-  const price = parseFloat(document.getElementById('inPrice').value);
-  const qty   = parseInt(document.getElementById('inQty').value) || 1;
-  const note  = document.getElementById('inNote').value.trim();
+  const buyer    = document.getElementById('inBuyer').value.trim();
+  const item     = document.getElementById('inItem').value.trim();
+  const price    = parseFloat(document.getElementById('inPrice').value);
+  const qty      = parseInt(document.getElementById('inQty').value) || 1;
+  const note     = document.getElementById('inNote').value.trim();
+  const itemDate = document.getElementById('inItemDate')?.value || today();
 
   if (!buyer || !item || !price) {
     showToast('Lengkapi nama pembeli, item, dan harga!', '⚠️'); return;
@@ -451,7 +452,7 @@ window.addOrder = async function() {
     await addDoc(ordersCol, {
       buyer, item, price, qty, note,
       paid: false,
-      date: today(),
+      date: itemDate,
       createdAt: Date.now()
     });
 
@@ -723,6 +724,9 @@ window.setInputMode = function(mode) {
     document.getElementById('bulkPreview').style.display = 'none';
     const dateEl = document.getElementById('bulkDate');
     if (dateEl && !dateEl.value) dateEl.value = today();
+  } else {
+    const manualDateEl = document.getElementById('inItemDate');
+    if (manualDateEl && !manualDateEl.value) manualDateEl.value = today();
   }
 };
 
@@ -821,14 +825,18 @@ window.setAntrianMode = function(mode) {
     document.getElementById('antrianBulkPreview').style.display = 'none';
     const dateEl = document.getElementById('antrianBulkDate');
     if (dateEl && !dateEl.value) dateEl.value = today();
+  } else {
+    const manualDateEl = document.getElementById('antrianItemDate');
+    if (manualDateEl && !manualDateEl.value) manualDateEl.value = today();
   }
 };
 
 window.addAntrian = async function() {
-  const item  = document.getElementById('antrianItem').value.trim();
-  const price = parseFloat(document.getElementById('antrianPrice').value);
-  const qty   = parseInt(document.getElementById('antrianQty').value) || 1;
-  const note  = document.getElementById('antrianNote').value.trim();
+  const item     = document.getElementById('antrianItem').value.trim();
+  const price    = parseFloat(document.getElementById('antrianPrice').value);
+  const qty      = parseInt(document.getElementById('antrianQty').value) || 1;
+  const note     = document.getElementById('antrianNote').value.trim();
+  const itemDate = document.getElementById('antrianItemDate')?.value || today();
   if (!item || !price) { showToast('Lengkapi nama item dan harga!', '⚠️'); return; }
 
   const btn = document.getElementById('btnAddAntrian');
@@ -836,7 +844,7 @@ window.addAntrian = async function() {
   btn.textContent = '⏳ Menyimpan...';
   setSyncBadge('loading');
   try {
-    await addDoc(antrianCol, { item, price, qty, note, buyer: '', date: today(), sent: false, claimedBy: null, createdAt: Date.now() });
+    await addDoc(antrianCol, { item, price, qty, note, buyer: '', date: itemDate, sent: false, claimedBy: null, createdAt: Date.now() });
     document.getElementById('antrianItem').value  = '';
     document.getElementById('antrianPrice').value = '';
     document.getElementById('antrianQty').value   = '1';
@@ -2053,6 +2061,12 @@ renderQris();
 
 // Kolom tanggal hapus dikosongkan secara default - user harus pilih tanggal dulu
 updateDeleteDateInfo();
+
+// Default tanggal item untuk form manual (antrian & pesanan) = hari ini
+const antrianItemDateEl = document.getElementById('antrianItemDate');
+if (antrianItemDateEl && !antrianItemDateEl.value) antrianItemDateEl.value = today();
+const inItemDateEl = document.getElementById('inItemDate');
+if (inItemDateEl && !inItemDateEl.value) inItemDateEl.value = today();
 
 // Filter listeners
 document.getElementById('filterBuyer').addEventListener('input', () => window.renderOrders());
