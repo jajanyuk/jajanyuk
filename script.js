@@ -1390,7 +1390,12 @@ function renderPesanankuAdminManage() {
 window.togglePesanankuDate = async function(dateStr, checked) {
   setSyncBadge('loading');
   try {
-    await setDoc(doc(db, 'settings', 'pesanankuVisibility'), { ['dates.' + dateStr]: checked }, { merge: true });
+    // PENTING: setDoc (beda dengan updateDoc) tidak memparse key string ber-titik
+    // sebagai nested path. Harus pakai object nested { dates: { ... } } supaya
+    // benar-benar masuk ke dalam map "dates", bukan jadi field literal "dates.xxx".
+    // Dengan merge:true, Firestore otomatis hanya menimpa key tanggal ini saja
+    // di dalam map "dates" dan tidak menghapus tanggal lain yang sudah diatur.
+    await setDoc(doc(db, 'settings', 'pesanankuVisibility'), { dates: { [dateStr]: checked } }, { merge: true });
     showToast(checked ? `Tanggal ${formatTanggalIndo(dateStr)} kini terlihat oleh user` : `Tanggal ${formatTanggalIndo(dateStr)} disembunyikan dari user`, checked ? '👁️' : '🙈');
     setSyncBadge('ok');
   } catch(e) {
@@ -1407,12 +1412,13 @@ window.setAllPesanankuVisibility = async function(show) {
   const dates = [...new Set(utbOrders.map(o => o.date).filter(Boolean))];
   if (!dates.length) { showToast('Belum ada tanggal pesanan UTB', 'ℹ️'); return; }
 
-  const updates = {};
-  dates.forEach(d => { updates['dates.' + d] = show; });
+  // Sama seperti togglePesanankuDate: harus nested object { dates: {...} }, bukan key ber-titik
+  const dateUpdates = {};
+  dates.forEach(d => { dateUpdates[d] = show; });
 
   setSyncBadge('loading');
   try {
-    await setDoc(doc(db, 'settings', 'pesanankuVisibility'), updates, { merge: true });
+    await setDoc(doc(db, 'settings', 'pesanankuVisibility'), { dates: dateUpdates }, { merge: true });
     showToast(show ? 'Semua tanggal kini ditampilkan ke user' : 'Semua tanggal disembunyikan dari user', show ? '✅' : '🚫');
     setSyncBadge('ok');
   } catch(e) {
