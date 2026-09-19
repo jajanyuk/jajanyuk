@@ -69,6 +69,9 @@ let utbUserLokasi = null;
 // Pesananku state: tanggal (antrian) mana saja yang boleh dilihat user biasa,
 // diatur oleh admin lewat tab Pesananku. Disimpan di settings/pesanankuVisibility.dates
 let pesanankuVisibleDates = {};
+let pesanankuSettingsLoaded = false; // sudah menerima data pengaturan tanggal dari Firestore?
+let pesanankuSettingsError  = false; // listener pengaturan gagal (mis. koneksi/permission)
+let ordersLoaded = false;            // snapshot pertama koleksi orders sudah diterima?
 
 // ============================================================
 // ADMIN STATE
@@ -287,14 +290,46 @@ function isTabActive(name) {
   return !!el && el.classList.contains('active');
 }
 
+// Kunci tanggal yang dipakai SAMA PERSIS oleh panel toggle admin dan filter user.
+// Order tanpa field date dikelompokkan ke kunci '-' supaya tetap bisa di-toggle.
+function pesanankuDateKey(o) { return o.date || '-'; }
+
+// Ubah dokumen settings/pesanankuVisibility menjadi { 'YYYY-MM-DD': true/false }.
+function parsePesanankuVisibility(data) {
+  const result = {};
+  if (!data) return result;
+
+  // Format resmi: map bersarang { dates: { '2026-09-19': true } }
+  if (data.dates && typeof data.dates === 'object') {
+    Object.keys(data.dates).forEach(k => { result[k] = data.dates[k] === true; });
+  }
+
+  // Kompatibilitas data lama: versi script sebelumnya sempat menyimpan field literal
+  // berbentuk "dates.2026-09-19" (bukan di dalam map). Tetap dibaca supaya toggle
+  // yang sudah pernah dinyalakan admin tidak hilang.
+  Object.keys(data).forEach(k => {
+    if (k.startsWith('dates.')) {
+      const dateKey = k.slice('dates.'.length);
+      if (!(dateKey in result)) result[dateKey] = data[k] === true;
+    }
+  });
+  return result;
+}
+
 function startPesanankuSettingsListener() {
   if (pesanankuSettingsListenerStarted) return;
   pesanankuSettingsListenerStarted = true;
   onSnapshot(doc(db, 'settings', 'pesanankuVisibility'), snap => {
-    pesanankuVisibleDates = (snap.exists() && snap.data().dates) ? snap.data().dates : {};
+    pesanankuVisibleDates = parsePesanankuVisibility(snap.exists() ? snap.data() : null);
+    pesanankuSettingsLoaded = true;
+    pesanankuSettingsError  = false;
     if (isTabActive('myorders')) renderMyOrders();
   }, err => {
     console.error('Pesananku settings listener error:', err);
+    pesanankuSettingsError = true;
+    // Listener yang error otomatis berhenti; reset flag supaya dicoba lagi saat tab dibuka ulang
+    pesanankuSettingsListenerStarted = false;
+    if (isTabActive('myorders')) renderMyOrders();
   });
 }
 
@@ -303,6 +338,7 @@ function startOrdersListener() {
   ordersListenerStarted = true;
   onSnapshot(query(ordersCol, orderBy('createdAt', 'asc')), snap => {
     orders = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+    ordersLoaded = true;
     setSyncBadge('ok');
     updateDeleteDateInfo();
     // Render hanya tab yang sedang dibuka user/admin saat ini, jangan render tab lain yang tersembunyi
@@ -1309,12 +1345,9 @@ function renderPesanankuPendingCard() {
   const wrap = document.getElementById('myOrdersPendingCard');
   if (!wrap) return;
 
+  // User yang belum masuk lewat UTB tidak diberi info/tombol apa pun di sini
   if (!utbUserName) {
-    wrap.innerHTML = `
-      <div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;text-align:center">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Kamu belum masuk lewat tab UTB, jadi belum ada pesanan yang bisa dipantau di sini</div>
-        <button class="btn btn-primary btn-sm" style="max-width:220px;margin:0 auto" onclick="switchTab('utb')">🧃 Ke Tab UTB</button>
-      </div>`;
+    wrap.innerHTML = '';
     return;
   }
 
@@ -1350,13 +1383,18 @@ function renderPesanankuAdminManage() {
   const wrap = document.getElementById('myOrdersAdminManageWrap');
   if (!wrap) return;
 
-  if (!isAdmin) { wrap.style.display = 'none'; return; }
+  if (!isAdmin) {
+    wrap.style.display = 'none';
+    const staleList = document.getElementById('myOrdersDateToggleList');
+    if (staleList) staleList.innerHTML = ''; // pastikan tidak ada toggle tersisa di DOM user biasa
+    return;
+  }
   wrap.style.display = 'block';
 
   const utbOrders  = orders.filter(o => o.source === 'utb');
   const dateStats  = {};
   utbOrders.forEach(o => {
-    const d = o.date || '-';
+    const d = pesanankuDateKey(o);
     dateStats[d] = (dateStats[d] || 0) + 1;
   });
   const dates = Object.keys(dateStats).sort((a, b) => b.localeCompare(a));
@@ -1375,7 +1413,7 @@ function renderPesanankuAdminManage() {
     return `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;${isLast ? '' : 'border-bottom:1px solid var(--border);'}">
       <div>
-        <div style="font-size:13px;font-weight:700;color:var(--text)">${formatTanggalIndo(d)}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${d === '-' ? 'Tanpa tanggal' : formatTanggalIndo(d)}</div>
         <div style="font-size:11px;color:var(--text3)">${dateStats[d]} item${visible ? ' · terlihat oleh user' : ''}</div>
       </div>
       <label class="switch">
@@ -1388,6 +1426,11 @@ function renderPesanankuAdminManage() {
 
 // Nyalakan/matikan visibilitas satu tanggal untuk user biasa
 window.togglePesanankuDate = async function(dateStr, checked) {
+  // Hanya admin yang boleh mengatur tampilan tanggal
+  if (!isAdmin) {
+    showToast('Hanya admin yang bisa mengatur tampilan tanggal', '🔒');
+    return;
+  }
   setSyncBadge('loading');
   try {
     // PENTING: setDoc (beda dengan updateDoc) tidak memparse key string ber-titik
@@ -1408,8 +1451,13 @@ window.togglePesanankuDate = async function(dateStr, checked) {
 
 // Tampilkan/sembunyikan semua tanggal sekaligus, buat kemudahan admin
 window.setAllPesanankuVisibility = async function(show) {
+  // Hanya admin yang boleh mengatur tampilan tanggal
+  if (!isAdmin) {
+    showToast('Hanya admin yang bisa mengatur tampilan tanggal', '🔒');
+    return;
+  }
   const utbOrders = orders.filter(o => o.source === 'utb');
-  const dates = [...new Set(utbOrders.map(o => o.date).filter(Boolean))];
+  const dates = [...new Set(utbOrders.map(o => pesanankuDateKey(o)))];
   if (!dates.length) { showToast('Belum ada tanggal pesanan UTB', 'ℹ️'); return; }
 
   // Sama seperti togglePesanankuDate: harus nested object { dates: {...} }, bukan key ber-titik
@@ -1440,7 +1488,7 @@ window.renderMyOrders = function renderMyOrders() {
   // Admin selalu bisa lihat semua data. User biasa hanya lihat tanggal
   // yang sudah diizinkan admin lewat panel "Atur Tampilan Untuk User".
   if (!isAdmin) {
-    myOrders = myOrders.filter(o => !!pesanankuVisibleDates[o.date]);
+    myOrders = myOrders.filter(o => pesanankuVisibleDates[pesanankuDateKey(o)] === true);
   }
 
   // Pencarian berdasarkan nama saja
@@ -1462,9 +1510,11 @@ window.renderMyOrders = function renderMyOrders() {
 
   if (!myOrders.length) {
     let msg;
-    if (search)            msg = 'Tidak ada pesanan dengan nama tersebut';
-    else if (!isAdmin)     msg = 'Belum ada pesanan yang ditampilkan admin untuk saat ini';
-    else                   msg = 'Belum ada pesanan UTB';
+    if (search)                                            msg = 'Tidak ada pesanan dengan nama tersebut';
+    else if (!isAdmin && pesanankuSettingsError)           msg = 'Gagal memuat pengaturan tampilan. Coba buka ulang tab ini.';
+    else if (!ordersLoaded || (!isAdmin && !pesanankuSettingsLoaded)) msg = 'Memuat data pesanan...';
+    else if (!isAdmin)                                     msg = 'Belum ada pesanan yang ditampilkan admin untuk saat ini';
+    else                                                   msg = 'Belum ada pesanan UTB';
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">${msg}</div></div>`;
     return;
   }
