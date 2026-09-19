@@ -66,6 +66,10 @@ let ringSortMode     = 'asc';
 let utbUserName = null;
 let utbUserLokasi = null;
 
+// Pesananku state: tanggal (antrian) mana saja yang boleh dilihat user biasa,
+// diatur oleh admin lewat tab Pesananku. Disimpan di settings/pesanankuVisibility.dates
+let pesanankuVisibleDates = {};
+
 // ============================================================
 // ADMIN STATE
 // ============================================================
@@ -274,17 +278,39 @@ updateHeaderDate();
 let ordersListenerStarted = false;
 let depositsListenerStarted = false;
 let antrianListenerStarted = false;
+let pesanankuSettingsListenerStarted = false;
+
+// Cek apakah sebuah tab sedang aktif/terlihat, supaya listener realtime
+// tidak buang kerja render DOM pada tab yang sedang disembunyikan.
+function isTabActive(name) {
+  const el = document.getElementById('tab-' + name);
+  return !!el && el.classList.contains('active');
+}
+
+function startPesanankuSettingsListener() {
+  if (pesanankuSettingsListenerStarted) return;
+  pesanankuSettingsListenerStarted = true;
+  onSnapshot(doc(db, 'settings', 'pesanankuVisibility'), snap => {
+    pesanankuVisibleDates = (snap.exists() && snap.data().dates) ? snap.data().dates : {};
+    if (isTabActive('myorders')) renderMyOrders();
+  }, err => {
+    console.error('Pesananku settings listener error:', err);
+  });
+}
 
 function startOrdersListener() {
   if (ordersListenerStarted) return;
   ordersListenerStarted = true;
   onSnapshot(query(ordersCol, orderBy('createdAt', 'asc')), snap => {
     orders = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-    renderOrders();
-    renderDeposits();
     setSyncBadge('ok');
     updateDeleteDateInfo();
-    if (document.getElementById('tab-myorders')?.classList.contains('active')) renderMyOrders();
+    // Render hanya tab yang sedang dibuka user/admin saat ini, jangan render tab lain yang tersembunyi
+    if (isTabActive('pesanan'))   window.renderOrders();
+    if (isTabActive('deposit'))   renderDeposits();
+    if (isTabActive('ringkasan')) renderSummary();
+    if (isTabActive('tagihan'))   renderBuyerList();
+    if (isTabActive('myorders'))  renderMyOrders();
   }, err => {
     console.error('Orders listener error:', err);
     setSyncBadge('err');
@@ -296,7 +322,9 @@ function startDepositsListener() {
   depositsListenerStarted = true;
   onSnapshot(query(depositsCol, orderBy('createdAt', 'asc')), snap => {
     deposits = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-    renderDeposits();
+    if (isTabActive('deposit')) renderDeposits();
+    // Badge "punya deposit" di daftar Pesanan ikut bergantung pada data deposit
+    if (isTabActive('pesanan')) window.renderOrders();
   }, err => console.error('Deposits listener error:', err));
 }
 
@@ -305,9 +333,9 @@ function startAntrianListener() {
   antrianListenerStarted = true;
   onSnapshot(query(antrianCol, orderBy('createdAt', 'asc')), snap => {
     antrian = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-    renderAntrian();
-    if (document.getElementById('tab-utb').classList.contains('active')) renderUtb();
-    if (document.getElementById('tab-myorders')?.classList.contains('active')) renderMyOrders();
+    if (isTabActive('antrian'))  renderAntrian();
+    if (isTabActive('utb'))      renderUtb();
+    if (isTabActive('myorders')) renderMyOrders();
   }, err => console.error('Antrian listener error:', err));
 }
 
@@ -339,7 +367,7 @@ window.switchTab = function(name) {
   if (name === 'tagihan')   { startOrdersListener(); renderBuyerList(); }
   if (name === 'deposit')   { startDepositsListener(); startOrdersListener(); renderDeposits(); }
   if (name === 'utb')       { startAntrianListener(); renderUtb(); }
-  if (name === 'myorders')  { startOrdersListener(); startAntrianListener(); renderMyOrders(); }
+  if (name === 'myorders')  { startOrdersListener(); startAntrianListener(); startPesanankuSettingsListener(); renderMyOrders(); }
   if (name === 'qris')      renderQris();
 };
 
@@ -1247,7 +1275,7 @@ function renderUtb() {
 }
 
 // ============================================================
-// PESANAN SAYA (dashboard item UTB yang sudah dipesan)
+// PESANANKU (dashboard item UTB yang sudah dipesan)
 // ============================================================
 window.deleteMyOrder = async function(firestoreId) {
   if (!isAdmin) return;
@@ -1275,28 +1303,141 @@ window.deleteMyOrder = async function(firestoreId) {
   }
 };
 
-window.renderMyOrders = function renderMyOrders() {
-  const namePrompt = document.getElementById('myOrdersNamePrompt');
-  const main       = document.getElementById('myOrdersMain');
-  if (!namePrompt || !main) return;
+// Kartu info di atas tab Pesananku: item yang masih tersimpan di keranjang UTB
+// (sudah dicentang/diklaim tapi belum dikirim/submit) milik user sesi ini.
+function renderPesanankuPendingCard() {
+  const wrap = document.getElementById('myOrdersPendingCard');
+  if (!wrap) return;
 
+  if (!utbUserName) {
+    wrap.innerHTML = `
+      <div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;text-align:center">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Kamu belum masuk lewat tab UTB, jadi belum ada pesanan yang bisa dipantau di sini</div>
+        <button class="btn btn-primary btn-sm" style="max-width:220px;margin:0 auto" onclick="switchTab('utb')">🧃 Ke Tab UTB</button>
+      </div>`;
+    return;
+  }
+
+  const pending = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
+
+  if (!pending.length) {
+    wrap.innerHTML = `
+      <div style="background:var(--green-light);border:1.5px solid #86EFAC;border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:20px">✅</div>
+        <div style="font-size:12px;font-weight:600;color:var(--green-dark)">Tidak ada pesanan yang pending, semua sudah terkirim</div>
+      </div>`;
+    return;
+  }
+
+  const totalPending = pending.reduce((s, a) => s + (a.price || 0) * (a.qty || 1), 0);
+  wrap.innerHTML = `
+    <div style="background:linear-gradient(135deg,#FFF7E8,#FEF3C7);border:1.5px solid #FDE68A;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#92400E">⏳ ${pending.length} item belum dikirim</div>
+          <div style="font-size:20px;font-weight:800;color:#92400E;font-family:'DM Mono',monospace;margin-top:2px">${rupiah(totalPending)}</div>
+        </div>
+        <div style="font-size:28px">🛒</div>
+      </div>
+      <div style="font-size:11px;color:#92400E;margin-bottom:10px">Item ini masih di keranjang UTB kamu dan belum jadi pesanan resmi</div>
+      <button class="btn btn-primary btn-sm w-full" style="justify-content:center;background:#92400E" onclick="switchTab('utb')">🧃 Lanjut Kirim Pesanan</button>
+    </div>`;
+}
+
+// Panel khusus admin: nyalakan/matikan tanggal (tanggal item dari Antrian) mana
+// yang boleh dilihat user biasa di tab Pesananku.
+function renderPesanankuAdminManage() {
+  const wrap = document.getElementById('myOrdersAdminManageWrap');
+  if (!wrap) return;
+
+  if (!isAdmin) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+
+  const utbOrders  = orders.filter(o => o.source === 'utb');
+  const dateStats  = {};
+  utbOrders.forEach(o => {
+    const d = o.date || '-';
+    dateStats[d] = (dateStats[d] || 0) + 1;
+  });
+  const dates = Object.keys(dateStats).sort((a, b) => b.localeCompare(a));
+
+  const listEl = document.getElementById('myOrdersDateToggleList');
+  if (!listEl) return;
+
+  if (!dates.length) {
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--text3);text-align:center;padding:10px 0">Belum ada pesanan UTB yang masuk</div>`;
+    return;
+  }
+
+  listEl.innerHTML = dates.map((d, i) => {
+    const visible = !!pesanankuVisibleDates[d];
+    const isLast  = i === dates.length - 1;
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;${isLast ? '' : 'border-bottom:1px solid var(--border);'}">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${formatTanggalIndo(d)}</div>
+        <div style="font-size:11px;color:var(--text3)">${dateStats[d]} item${visible ? ' · terlihat oleh user' : ''}</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" ${visible ? 'checked' : ''} onchange="togglePesanankuDate('${d}', this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>`;
+  }).join('');
+}
+
+// Nyalakan/matikan visibilitas satu tanggal untuk user biasa
+window.togglePesanankuDate = async function(dateStr, checked) {
+  setSyncBadge('loading');
+  try {
+    await setDoc(doc(db, 'settings', 'pesanankuVisibility'), { ['dates.' + dateStr]: checked }, { merge: true });
+    showToast(checked ? `Tanggal ${formatTanggalIndo(dateStr)} kini terlihat oleh user` : `Tanggal ${formatTanggalIndo(dateStr)} disembunyikan dari user`, checked ? '👁️' : '🙈');
+    setSyncBadge('ok');
+  } catch(e) {
+    console.error('Toggle pesananku date error:', e);
+    showToast('Gagal mengubah tampilan tanggal!', '❌');
+    setSyncBadge('err');
+    renderMyOrders(); // kembalikan tampilan toggle ke state sebelumnya
+  }
+};
+
+// Tampilkan/sembunyikan semua tanggal sekaligus, buat kemudahan admin
+window.setAllPesanankuVisibility = async function(show) {
   const utbOrders = orders.filter(o => o.source === 'utb');
+  const dates = [...new Set(utbOrders.map(o => o.date).filter(Boolean))];
+  if (!dates.length) { showToast('Belum ada tanggal pesanan UTB', 'ℹ️'); return; }
 
-  // Hilangkan form prompt nama UTB, langsung tampilkan halaman utama untuk semua user
-  namePrompt.style.display = 'none';
-  main.style.display = 'block';
+  const updates = {};
+  dates.forEach(d => { updates['dates.' + d] = show; });
 
-  // Tampilkan form pencarian (filter) untuk semua user
-  const filterWrap = document.getElementById('myOrdersAdminFilterWrap');
-  if (filterWrap) filterWrap.style.display = 'block';
+  setSyncBadge('loading');
+  try {
+    await setDoc(doc(db, 'settings', 'pesanankuVisibility'), updates, { merge: true });
+    showToast(show ? 'Semua tanggal kini ditampilkan ke user' : 'Semua tanggal disembunyikan dari user', show ? '✅' : '🚫');
+    setSyncBadge('ok');
+  } catch(e) {
+    console.error('Set all pesananku visibility error:', e);
+    showToast('Gagal mengubah tampilan!', '❌');
+    setSyncBadge('err');
+  }
+};
 
-  let myOrders = utbOrders;
+window.renderMyOrders = function renderMyOrders() {
+  const list = document.getElementById('myOrdersList');
+  if (!list) return;
 
-  // Sesuaikan title dan deskripsi karena kini menampilkan semua pesanan
-  //document.getElementById('myOrdersTitle').textContent = '📦 Semua Pesanan UTB';
-  document.getElementById('myOrdersSub').textContent = 'Cari dan lihat riwayat pesanan UTB';
+  renderPesanankuPendingCard();
+  renderPesanankuAdminManage();
 
-  // Eksekusi pencarian nama untuk semua user
+  let myOrders = orders.filter(o => o.source === 'utb');
+
+  // Admin selalu bisa lihat semua data. User biasa hanya lihat tanggal
+  // yang sudah diizinkan admin lewat panel "Atur Tampilan Untuk User".
+  if (!isAdmin) {
+    myOrders = myOrders.filter(o => !!pesanankuVisibleDates[o.date]);
+  }
+
+  // Pencarian berdasarkan nama saja
   const searchEl = document.getElementById('filterMyOrdersBuyer');
   const search   = searchEl ? searchEl.value.toLowerCase().trim() : '';
   if (search) {
@@ -1306,22 +1447,18 @@ window.renderMyOrders = function renderMyOrders() {
   // Urutkan berdasarkan yang paling baru ditambahkan
   myOrders = myOrders.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-  // Hitung dan render Total Harga (Ditampilkan untuk semua user)
+  // Hitung dan render total harga dari data yang sedang ditampilkan
   const total = myOrders.reduce((s, o) => s + (o.price || 0) * (o.qty || 1), 0);
   const totalEl = document.getElementById('myOrdersTotal');
-  if (totalEl) {
-    totalEl.textContent = rupiah(total);
-    // Pastikan blok total selalu tampil
-    if (totalEl.parentElement) {
-      totalEl.parentElement.style.display = 'block'; 
-    }
-  }
-  
+  if (totalEl) totalEl.textContent = rupiah(total);
+
   document.getElementById('myOrdersCount').textContent = myOrders.length + ' item';
 
-  const list = document.getElementById('myOrdersList');
   if (!myOrders.length) {
-    const msg = search ? 'Tidak ada pesanan dengan nama tersebut' : 'Belum ada pesanan UTB';
+    let msg;
+    if (search)            msg = 'Tidak ada pesanan dengan nama tersebut';
+    else if (!isAdmin)     msg = 'Belum ada pesanan yang ditampilkan admin untuk saat ini';
+    else                   msg = 'Belum ada pesanan UTB';
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">${msg}</div></div>`;
     return;
   }
@@ -1335,18 +1472,11 @@ window.renderMyOrders = function renderMyOrders() {
           <span class="badge ${o.paid ? 'badge-paid' : 'badge-unpaid'}">${o.paid ? '✓ Lunas' : '⏳ Belum'}</span>
           <span class="badge" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE">🧃 UTB</span>
         </div>
-        
-        <!-- Tampilkan nama pembeli untuk semua user -->
         <div class="order-item-buyer">👤 ${o.buyer || '-'}${o.qty > 1 ? ' · x' + o.qty : ''}</div>
-        
         ${o.lokasi ? '<div class="order-item-details">📍 ' + o.lokasi + '</div>' : ''}
         <div class="order-item-date">📅 ${formatTanggalIndo(o.date)}</div>
-        
-        <!-- Tombol hapus tetap HANYA untuk Admin -->
         ${isAdmin ? `<div class="order-item-actions"><button class="btn btn-sm btn-danger" onclick="deleteMyOrder('${o.firestoreId}')">🗑 Hapus</button></div>` : ''}
       </div>
-      
-      <!-- Harga per item DITAMPILKAN untuk semua user -->
       <div class="order-item-price">${rupiah((o.price || 0) * (o.qty || 1))}</div>
     </div>`).join('');
 }
@@ -2056,8 +2186,7 @@ document.getElementById('utbConfirmModal').addEventListener('click', function(e)
 // ============================================================
 // INIT
 // ============================================================
-applyAdminAccess();
-renderQris();
+applyAdminAccess(); // isAdmin selalu false di awal -> ini otomatis switchTab('qris') & renderQris()
 
 // Kolom tanggal hapus dikosongkan secara default - user harus pilih tanggal dulu
 updateDeleteDateInfo();
