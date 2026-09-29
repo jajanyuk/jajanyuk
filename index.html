@@ -467,7 +467,7 @@
       </div>
 
       <div class="utb-order-bar" id="utbOrderBar" style="display:none">
-        <div class="utb-order-hint">⚠️ Belum di-submit! Klik Order agar item tidak menggantung</div>
+        <div class="utb-order-hint">⚠️ Belum di-submit! Klik Order, atau item dilepas otomatis setelah 5 menit</div>
         <button class="btn btn-primary w-full" onclick="openUtbConfirm()">✅ Order (<span id="utbSelectedCount">0</span> item · <span id="utbSelectedTotal">Rp 0</span>)</button>
       </div>
     </div>
@@ -600,7 +600,7 @@
     <div class="utb-confirm-title">Ada Item Belum Di-submit</div>
     <div class="utb-leave-text">
       Kamu punya <b><span id="utbLeaveCount">0</span> item</b> (<span id="utbLeaveTotal">Rp 0</span>) yang sudah dicentang tapi belum dikirim.
-      Item ini akan <b>menggantung</b> dan terkunci sehingga tidak bisa dipesan orang lain.
+      Item ini terkunci untuk orang lain dan akan <b>dilepas otomatis</b> jika tidak di-submit dalam 5 menit.
     </div>
     <div class="utb-confirm-list" id="utbLeaveList"></div>
     <div style="display:flex;flex-direction:column;gap:8px">

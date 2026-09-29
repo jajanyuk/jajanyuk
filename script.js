@@ -13,7 +13,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  where
+  where,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // ============================================================
@@ -65,10 +66,14 @@ let ringSortMode     = 'asc';
 // UTB state
 let utbUserName = null;
 let utbUserLokasi = null;
-const UTB_STALE_MS = 5 * 60 * 1000;          // item dicentang > 5 menit tanpa submit dianggap "menggantung"
+const UTB_CLAIM_TTL_MS = 5 * 60 * 1000;      // item dicentang > 5 menit tanpa submit otomatis dilepas
 const UTB_STORAGE_KEY = 'jajanyuk_utb_user'; // simpan nama & lokasi supaya setelah refresh item pending tetap terlacak
 let utbLeaveTarget = null;                   // tab tujuan saat user mencoba keluar dari UTB
 let utbSkipLeaveGuard = false;
+let utbSubmitting = false;                   // sedang proses kirim order
+let utbAutoReleaseBusy = false;
+let utbPrevMineIds = new Set();              // item milik user pada pengecekan sebelumnya (untuk deteksi auto-release)
+const utbLocalReleased = new Set();          // item yang dilepas manual oleh user (bukan auto-release)
 try {
   const saved = JSON.parse(localStorage.getItem(UTB_STORAGE_KEY) || 'null');
   if (saved && saved.name && saved.lokasi) { utbUserName = saved.name; utbUserLokasi = saved.lokasi; }
@@ -377,6 +382,8 @@ function startAntrianListener() {
   antrianListenerStarted = true;
   onSnapshot(query(antrianCol, orderBy('createdAt', 'asc')), snap => {
     antrian = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+    utbOnAntrianChanged();
+    utbAutoReleaseExpired();
     if (isTabActive('antrian'))  renderAntrian();
     if (isTabActive('utb'))      renderUtb();
     if (isTabActive('myorders')) renderMyOrders();
@@ -1124,7 +1131,7 @@ function renderAntrian() {
             <div class="antrian-item-name">${a.item || '-'}${a.qty > 1 ? ' <span style="font-size:12px;color:var(--text3)">x' + a.qty + '</span>' : ''}</div>
             ${a.note ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📝 ' + a.note + '</div>' : ''}
             ${antrianDateMode !== 'today' ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 ' + (a.date || '-') + '</div>' : ''}
-            ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + ' · ⏱ ' + utbAgeText(a.claimedAt) + (utbIsStale(a) ? ' ⚠️ menggantung' : '') + ' <button class="utb-release-btn" onclick="adminReleaseClaim(\'' + a.firestoreId + '\')">🔓 Lepas</button></div>' : '')}
+            ${a.sent ? '<div style="font-size:11px;font-weight:700;color:var(--green-dark);margin-top:4px">✓ Terkirim ke: ' + a.buyer + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + '</div>' : (a.claimedBy ? '<div style="font-size:11px;font-weight:700;color:var(--amber);margin-top:4px">🧃 Dipilih di UTB oleh: ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + ' · ⏱ ' + utbAgeText(a.claimedAt) + ' · lepas otomatis dalam ' + utbCountdownHtml((a.claimedAt || 0) + UTB_CLAIM_TTL_MS) + ' <button class="utb-release-btn" onclick="adminReleaseClaim(\'' + a.firestoreId + '\')">🔓 Lepas</button></div>' : '')}
             ${a.sent && a.sentAt && a.createdAt ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">⏱ Diproses: ' + formatDurationMMSS(a.sentAt - a.createdAt) + ' (mm:ss)</div>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
@@ -1175,7 +1182,7 @@ window.utbChangeName = async function() {
   const mine = utbMyPending();
   if (mine.length) {
     if (!confirm(`Kamu punya ${mine.length} item yang belum di-submit.\nMengganti nama akan MELEPAS semua item tersebut.\n\nLanjut ganti nama?`)) return;
-    try { await utbReleaseItems(mine); } catch(e) { showToast('Gagal melepas item, coba lagi!', '❌'); return; }
+    try { await utbReleaseItems(mine, { owner: utbUserName }); } catch(e) { showToast('Gagal melepas item, coba lagi!', '❌'); return; }
   }
   utbUserName  = null;
   utbUserLokasi = null;
@@ -1185,7 +1192,7 @@ window.utbChangeName = async function() {
 
 // ---------- Helper validasi item menggantung ----------
 function utbMyPending() {
-  return utbUserName ? antrian.filter(a => !a.sent && a.claimedBy === utbUserName) : [];
+  return utbUserName ? antrian.filter(a => !a.sent && a.claimedBy === utbUserName && !utbIsExpired(a)) : [];
 }
 
 function utbAgeText(ts) {
@@ -1198,15 +1205,102 @@ function utbAgeText(ts) {
   return Math.floor(h / 24) + ' hari lalu';
 }
 
-// Menggantung = sudah dicentang > UTB_STALE_MS (atau waktunya tidak tercatat) dan belum di-submit
-function utbIsStale(a) {
-  return !a.claimedAt || (Date.now() - a.claimedAt) >= UTB_STALE_MS;
+// Kedaluwarsa = sudah dicentang >= 5 menit tanpa submit (atau waktunya tidak tercatat).
+// Klaim yang kedaluwarsa dianggap batal: item otomatis dilepas & bisa dipilih siapa pun.
+function utbIsExpired(a) {
+  return !a.claimedAt || (Date.now() - a.claimedAt) >= UTB_CLAIM_TTL_MS;
 }
 
-function utbReleaseItems(items) {
-  return Promise.all(items.map(a =>
-    updateDoc(doc(db, 'antrian', a.firestoreId), { claimedBy: null, claimedByLokasi: null, claimedAt: null })
-  ));
+function utbRemainingMs(a) {
+  return a.claimedAt ? Math.max(0, a.claimedAt + UTB_CLAIM_TTL_MS - Date.now()) : 0;
+}
+
+function utbFmtRemain(ms) {
+  const t = Math.ceil(Math.max(0, ms) / 1000);
+  return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+}
+
+// Angka hitung mundur; teksnya diperbarui tiap detik oleh updateUtbCountdowns()
+function utbCountdownHtml(expiryTs) {
+  return '<span class="utb-countdown" data-expiry="' + (expiryTs || 0) + '">' + utbFmtRemain((expiryTs || 0) - Date.now()) + '</span>';
+}
+
+function updateUtbCountdowns() {
+  document.querySelectorAll('.utb-countdown').forEach(el => {
+    const rem = Number(el.dataset.expiry) - Date.now();
+    el.textContent = utbFmtRemain(rem);
+    const warn = el.closest('.utb-warn');
+    if (warn) warn.classList.toggle('danger', rem < 60000);
+  });
+}
+
+// Lepas klaim lewat transaksi supaya tidak menimpa klaim baru orang lain.
+//  opts.auto  : hanya lepas jika klaim memang sudah kedaluwarsa
+//  opts.owner : hanya lepas jika klaim masih milik user tersebut
+function utbReleaseItems(items, opts = {}) {
+  return Promise.all(items.map(a => {
+    if (!opts.auto) utbLocalReleased.add(a.firestoreId);
+    const ref = doc(db, 'antrian', a.firestoreId);
+    return runTransaction(db, async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const cur = snap.data();
+      if (cur.sent || !cur.claimedBy) return;
+      if (opts.auto && !utbIsExpired(cur)) return;
+      if (opts.owner && cur.claimedBy !== opts.owner) return;
+      tx.update(ref, { claimedBy: null, claimedByLokasi: null, claimedAt: null });
+    });
+  }));
+}
+
+// Auto-release: klaim > 5 menit tanpa submit dikembalikan jadi item UTB tanpa pemilik.
+// Dijalankan oleh siapa pun yang sedang membuka data antrian, jadi tetap jalan
+// walau pemilik item sudah menutup browser.
+async function utbAutoReleaseExpired() {
+  if (utbAutoReleaseBusy || !antrianListenerStarted) return;
+  const expired = antrian.filter(a => !a.sent && a.claimedBy && utbIsExpired(a));
+  if (!expired.length) return;
+  utbAutoReleaseBusy = true;
+  try { await utbReleaseItems(expired, { auto: true }); }
+  catch (e) { console.error('Auto-release error:', e); }
+  finally { utbAutoReleaseBusy = false; }
+}
+
+// Dipanggil tiap data antrian berubah & tiap detik: beri tahu user kalau itemnya
+// dilepas otomatis, dan sinkronkan modal yang sedang terbuka.
+function utbOnAntrianChanged() {
+  if (!utbUserName) { utbPrevMineIds = new Set(); return; }
+  const mine = utbMyPending();
+  const nowIds = new Set(mine.map(a => a.firestoreId));
+
+  const lost = [...utbPrevMineIds].filter(id => {
+    if (nowIds.has(id)) return false;
+    if (utbLocalReleased.has(id)) { utbLocalReleased.delete(id); return false; }
+    const a = antrian.find(x => x.firestoreId === id);
+    return !!a && !a.sent;
+  });
+  utbPrevMineIds = nowIds;
+  if (lost.length) {
+    showToast(`${lost.length} item dilepas otomatis karena lebih dari ${Math.round(UTB_CLAIM_TTL_MS / 60000)} menit belum di-submit`, '⏱️');
+    if (isTabActive('utb')) renderUtb();
+  }
+
+  if (utbSubmitting) return;
+  const confirmModal = document.getElementById('utbConfirmModal');
+  if (confirmModal && confirmModal.classList.contains('show')) {
+    if (!mine.length) closeUtbConfirm(); else fillUtbConfirm(mine);
+  }
+  const leaveModal = document.getElementById('utbLeaveModal');
+  if (leaveModal && leaveModal.classList.contains('show')) {
+    if (!mine.length) {
+      const target = utbLeaveTarget;
+      leaveModal.classList.remove('show');
+      utbLeaveTarget = null;
+      if (target) { utbSkipLeaveGuard = true; window.switchTab(target); utbSkipLeaveGuard = false; }
+    } else {
+      fillUtbLeave(mine);
+    }
+  }
 }
 
 window.utbReleaseAll = async function() {
@@ -1214,7 +1308,7 @@ window.utbReleaseAll = async function() {
   if (!mine.length) return;
   if (!confirm(`Lepas semua ${mine.length} item yang kamu pilih?\nItem akan bisa dipesan orang lain lagi.`)) return;
   try {
-    await utbReleaseItems(mine);
+    await utbReleaseItems(mine, { owner: utbUserName });
     showToast('Semua pilihan dilepas', '🔓');
   } catch(e) {
     showToast('Gagal melepas item, coba lagi!', '❌');
@@ -1238,12 +1332,15 @@ window.adminReleaseClaim = async function(firestoreId) {
 // ---------- Modal penjaga saat pindah tab ----------
 function openUtbLeaveModal(target) {
   utbLeaveTarget = target;
-  const mine = utbMyPending();
+  fillUtbLeave(utbMyPending());
+  document.getElementById('utbLeaveModal').classList.add('show');
+}
+
+function fillUtbLeave(mine) {
   document.getElementById('utbLeaveCount').textContent = mine.length;
   document.getElementById('utbLeaveTotal').textContent = rupiah(mine.reduce((t, a) => t + (a.price || 0) * (a.qty || 1), 0));
   document.getElementById('utbLeaveList').innerHTML = mine.map(a =>
     `<div class="utb-leave-item">• ${a.item || '-'}${a.qty > 1 ? ' x' + a.qty : ''}</div>`).join('');
-  document.getElementById('utbLeaveModal').classList.add('show');
 }
 
 window.closeUtbLeaveModal = function() {
@@ -1259,7 +1356,7 @@ window.utbLeaveSubmit = function() {
 window.utbLeaveRelease = async function() {
   const target = utbLeaveTarget;
   try {
-    await utbReleaseItems(utbMyPending());
+    await utbReleaseItems(utbMyPending(), { owner: utbUserName });
   } catch(e) {
     showToast('Gagal melepas item, coba lagi!', '❌');
     return;
@@ -1278,18 +1375,30 @@ window.addEventListener('beforeunload', e => {
 window.toggleUtbItem = async function(firestoreId, isChecked) {
   const a = antrian.find(x => x.firestoreId === firestoreId);
   if (!a || !utbUserName) return;
+  const ref = doc(db, 'antrian', firestoreId);
 
   if (isChecked) {
-    if (a.claimedBy && a.claimedBy !== utbUserName) { renderUtb(); return; }
+    utbLocalReleased.delete(firestoreId);
     try {
-      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: utbUserName, claimedByLokasi: utbUserLokasi, claimedAt: Date.now() });
+      // Transaksi: cegah dua orang mengklaim item yang sama; klaim kedaluwarsa boleh diambil alih
+      const result = await runTransaction(db, async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) return 'gone';
+        const cur = snap.data();
+        if (cur.sent) return 'sent';
+        if (cur.claimedBy && cur.claimedBy !== utbUserName && !utbIsExpired(cur)) return 'taken';
+        tx.update(ref, { claimedBy: utbUserName, claimedByLokasi: utbUserLokasi, claimedAt: Date.now() });
+        return 'ok';
+      });
+      if (result === 'taken')    { showToast('Item baru saja dipilih orang lain', '🔒'); renderUtb(); }
+      else if (result !== 'ok')  { showToast('Item sudah tidak tersedia', '⚠️'); renderUtb(); }
     } catch(e) {
       showToast('Gagal pilih item, coba lagi!', '❌');
       renderUtb();
     }
   } else {
     try {
-      await updateDoc(doc(db, 'antrian', firestoreId), { claimedBy: null, claimedByLokasi: null, claimedAt: null });
+      await utbReleaseItems([a], { owner: utbUserName });
     } catch(e) {
       renderUtb();
     }
@@ -1298,10 +1407,21 @@ window.toggleUtbItem = async function(firestoreId, isChecked) {
 
 window.openUtbConfirm = function() {
   if (!utbUserName) return;
-  const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
+  const mySelected = utbMyPending();
   if (!mySelected.length) { showToast('Belum ada item dipilih!', '⚠️'); return; }
 
-document.getElementById('utbConfirmBuyerName').textContent = utbUserName + ' · 📍 ' + utbUserLokasi;
+  // Perpanjang masa tahan supaya user punya waktu penuh untuk menyelesaikan konfirmasi
+  const now = Date.now();
+  mySelected.forEach(a => {
+    updateDoc(doc(db, 'antrian', a.firestoreId), { claimedAt: now }).catch(() => {});
+  });
+
+  fillUtbConfirm(mySelected);
+  document.getElementById('utbConfirmModal').classList.add('show');
+};
+
+function fillUtbConfirm(mySelected) {
+  document.getElementById('utbConfirmBuyerName').textContent = utbUserName + ' · 📍 ' + utbUserLokasi;
   const total = mySelected.reduce((s, a) => s + (a.price || 0) * (a.qty || 1), 0);
   document.getElementById('utbConfirmTotal').textContent = rupiah(total);
   document.getElementById('utbConfirmList').innerHTML = mySelected.map(a => `
@@ -1312,9 +1432,7 @@ document.getElementById('utbConfirmBuyerName').textContent = utbUserName + ' · 
       </div>
       <div class="utb-confirm-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
     </div>`).join('');
-
-  document.getElementById('utbConfirmModal').classList.add('show');
-};
+}
 
 window.closeUtbConfirm = function() {
   document.getElementById('utbConfirmModal').classList.remove('show');
@@ -1323,9 +1441,11 @@ window.closeUtbConfirm = function() {
 
 window.submitUtbOrder = async function() {
   if (!utbUserName) return;
-  const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
+  const mySelected = utbMyPending();
   if (!mySelected.length) { showToast('Belum ada item dipilih!', '⚠️'); return; }
 
+  const target = utbLeaveTarget; // simpan dulu: modal bisa tertutup otomatis saat data berubah
+  utbSubmitting = true;
   const confirmBtn = document.getElementById('utbConfirmBtn');
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Mengirim...'; }
   setSyncBadge('loading');
@@ -1349,7 +1469,6 @@ window.submitUtbOrder = async function() {
     await Promise.all(mySelected.map(a =>
       updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName, claimedByLokasi: utbUserLokasi, sentAt: Date.now() })
     ));
-    const target = utbLeaveTarget;
     closeUtbConfirm();
     showToast('Pesanan kamu berhasil dikirim! 🎉');
     setSyncBadge('ok');
@@ -1357,6 +1476,7 @@ window.submitUtbOrder = async function() {
   } catch(e) {
     showToast('Gagal order, coba lagi!', '❌'); setSyncBadge('err');
   } finally {
+    utbSubmitting = false;
     if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ Kirim Pesanan'; }
   }
 };
@@ -1365,7 +1485,7 @@ function updateUtbOrderBar() {
   const bar = document.getElementById('utbOrderBar');
   if (!bar) return;
   if (!utbUserName) { bar.style.display = 'none'; return; }
-  const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
+  const mySelected = utbMyPending();
   if (mySelected.length > 0) {
     bar.style.display = 'block';
     document.getElementById('utbSelectedCount').textContent = mySelected.length;
@@ -1405,8 +1525,8 @@ function renderUtb() {
   }
 
   list.innerHTML = items.map(a => {
-    const lockedByOther = a.claimedBy && a.claimedBy !== utbUserName;
-    const checked       = a.claimedBy === utbUserName;
+    const lockedByOther = a.claimedBy && a.claimedBy !== utbUserName && !utbIsExpired(a);
+    const checked       = a.claimedBy === utbUserName && !utbIsExpired(a);
     return `
     <div class="utb-item ${checked ? 'checked' : ''} ${lockedByOther ? 'locked' : ''}">
       <div class="utb-checkbox-wrap">
@@ -1416,8 +1536,8 @@ function renderUtb() {
       <div class="utb-item-info">
         <div class="utb-item-name">${a.item || '-'}${a.qty > 1 ? ' x' + a.qty : ''}</div>
         ${a.note ? '<div class="utb-item-note">📝 ' + a.note + '</div>' : ''}
-        ${lockedByOther ? '<div class="utb-item-locked-by ' + (utbIsStale(a) ? 'stale' : '') + '">🔒 Dipilih oleh ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + ' · ⏱ ' + utbAgeText(a.claimedAt) + (utbIsStale(a) ? ' ⚠️ belum di-submit' : '') + (isAdmin ? '<button class="utb-release-btn" onclick="adminReleaseClaim(\'' + a.firestoreId + '\')">🔓 Lepas</button>' : '') + '</div>' : ''}
-        ${checked && utbIsStale(a) ? '<div class="utb-item-locked-by stale">⚠️ Sudah ' + utbAgeText(a.claimedAt) + ', belum di-submit</div>' : ''}
+        ${lockedByOther ? '<div class="utb-item-locked-by">🔒 Dipilih oleh ' + a.claimedBy + (a.claimedByLokasi ? ' · 📍 ' + a.claimedByLokasi : '') + ' · ⏱ tersedia lagi dalam ' + utbCountdownHtml(a.claimedAt + UTB_CLAIM_TTL_MS) + (isAdmin ? '<button class="utb-release-btn" onclick="adminReleaseClaim(\'' + a.firestoreId + '\')">🔓 Lepas</button>' : '') + '</div>' : ''}
+        ${checked ? '<div class="utb-item-locked-by">⏱ Dilepas otomatis dalam ' + utbCountdownHtml(a.claimedAt + UTB_CLAIM_TTL_MS) + ' jika belum di-submit</div>' : ''}
       </div>
       <div class="utb-item-price">${rupiah((a.price || 0) * (a.qty || 1))}</div>
     </div>`;
@@ -1431,15 +1551,15 @@ function renderUtbPendingBanner() {
   if (!wrap) return;
   const mine = utbMyPending();
   if (!mine.length) { wrap.innerHTML = ''; return; }
-  const total = mine.reduce((t, a) => t + (a.price || 0) * (a.qty || 1), 0);
-  const stale = mine.filter(utbIsStale).length;
+  const total   = mine.reduce((t, a) => t + (a.price || 0) * (a.qty || 1), 0);
+  const soonest = Math.min(...mine.map(a => a.claimedAt + UTB_CLAIM_TTL_MS));
+  const urgent  = soonest - Date.now() < 60000;
   wrap.innerHTML = `
-    <div class="utb-warn ${stale ? 'danger' : ''}">
+    <div class="utb-warn ${urgent ? 'danger' : ''}">
       <div class="utb-warn-title">⚠️ ${mine.length} item belum kamu order (${rupiah(total)})</div>
       <div class="utb-warn-text">
-        Item yang dicentang tapi belum di-submit akan <b>menggantung</b> dan terkunci, sehingga orang lain tidak bisa memesannya.
-        Klik <b>Order</b> untuk mengirim, atau lepas centang jika batal.
-        ${stale ? '<br><b>' + stale + ' item sudah menggantung lebih dari ' + Math.round(UTB_STALE_MS / 60000) + ' menit.</b>' : ''}
+        Item yang dicentang tapi belum di-submit akan terkunci untuk orang lain.
+        Jika tidak di-order, item <b>dilepas otomatis dalam ${utbCountdownHtml(soonest)}</b> dan kembali menjadi item UTB tanpa pemilik.
       </div>
       <div class="utb-warn-actions">
         <button class="btn btn-primary btn-sm" onclick="openUtbConfirm()">✅ Order Sekarang</button>
@@ -1452,24 +1572,23 @@ function renderUtbPendingBanner() {
 function renderUtbHangingInfo() {
   const wrap = document.getElementById('utbHangingInfo');
   if (!wrap) return;
-  const others = antrian.filter(a => !a.sent && a.claimedBy && a.claimedBy !== utbUserName);
+  const others = antrian.filter(a => !a.sent && a.claimedBy && a.claimedBy !== utbUserName && !utbIsExpired(a));
   if (!others.length) { wrap.innerHTML = ''; return; }
 
   const groups = {};
   others.forEach(a => { (groups[a.claimedBy] = groups[a.claimedBy] || []).push(a); });
 
   const rows = Object.keys(groups).map(name => {
-    const list  = groups[name];
-    const sum   = list.reduce((t, a) => t + (a.price || 0) * (a.qty || 1), 0);
-    const times = list.map(a => a.claimedAt).filter(Boolean);
-    const oldest = times.length ? Math.min(...times) : null;
-    const stale  = list.some(utbIsStale);
-    const lokasi = list[0].claimedByLokasi;
+    const list    = groups[name];
+    const sum     = list.reduce((t, a) => t + (a.price || 0) * (a.qty || 1), 0);
+    const soonest = Math.min(...list.map(a => a.claimedAt + UTB_CLAIM_TTL_MS));
+    const oldest  = Math.min(...list.map(a => a.claimedAt));
+    const lokasi  = list[0].claimedByLokasi;
     return `
-      <div class="utb-hang-row ${stale ? 'stale' : ''}">
+      <div class="utb-hang-row">
         <div>
           <b>${name}</b>${lokasi ? ' · 📍 ' + lokasi : ''}
-          <small>${list.length} item · ⏱ ${utbAgeText(oldest)}${stale ? ' · ⚠️ menggantung' : ''}</small>
+          <small>${list.length} item · dipilih ${utbAgeText(oldest)} · tersedia lagi dalam ${utbCountdownHtml(soonest)}</small>
         </div>
         <div style="font-family:'DM Mono',monospace;font-weight:700;white-space:nowrap">${rupiah(sum)}</div>
       </div>`;
@@ -1478,13 +1597,21 @@ function renderUtbHangingInfo() {
   wrap.innerHTML = `
     <div class="utb-hang-card">
       <div class="utb-hang-title">🔒 ${others.length} item sedang dipilih orang lain (belum di-submit)</div>
-      <div class="utb-hang-sub">Item ini terkunci sampai pemilihnya mengirim order atau melepas pilihan. Jika sudah lama, minta yang bersangkutan untuk Order.</div>
+      <div class="utb-hang-sub">Item ini terkunci sementara. Jika pemilihnya tidak submit dalam ${Math.round(UTB_CLAIM_TTL_MS / 60000)} menit, item otomatis kembali tersedia.</div>
       ${rows}
     </div>`;
 }
 
-// Segarkan keterangan "berapa menit lalu" secara berkala saat tab UTB terbuka
-setInterval(() => { if (utbUserName && isTabActive('utb')) renderUtb(); }, 30000);
+// Ticker 1 detik: auto-release item kedaluwarsa, perbarui hitung mundur,
+// dan segarkan keterangan "x menit lalu" tiap 30 detik saat tab UTB terbuka
+let utbTick = 0;
+setInterval(() => {
+  utbTick++;
+  utbOnAntrianChanged();
+  utbAutoReleaseExpired();
+  updateUtbCountdowns();
+  if (utbUserName && isTabActive('utb') && utbTick % 30 === 0) renderUtb();
+}, 1000);
 
 // ============================================================
 // PESANANKU (dashboard item UTB yang sudah dipesan)
@@ -1527,7 +1654,7 @@ function renderPesanankuPendingCard() {
     return;
   }
 
-  const pending = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
+  const pending = utbMyPending();
 
   if (!pending.length) {
     wrap.innerHTML = `
@@ -1548,7 +1675,7 @@ function renderPesanankuPendingCard() {
         </div>
         <div style="font-size:28px">🛒</div>
       </div>
-      <div style="font-size:11px;color:#92400E;margin-bottom:10px">Item ini masih di keranjang UTB kamu dan belum jadi pesanan resmi</div>
+      <div style="font-size:11px;color:#92400E;margin-bottom:10px">Item ini masih di keranjang UTB kamu dan belum jadi pesanan resmi. Dilepas otomatis dalam <b>${utbCountdownHtml(Math.min(...pending.map(a => a.claimedAt + UTB_CLAIM_TTL_MS)))}</b> jika belum dikirim</div>
       <button class="btn btn-primary btn-sm w-full" style="justify-content:center;background:#92400E" onclick="switchTab('utb')">🧃 Lanjut Kirim Pesanan</button>
     </div>`;
 }
