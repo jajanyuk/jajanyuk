@@ -458,11 +458,16 @@
           <div class="utb-user-bar-name"><span>Nama Kamu</span><span id="utbCurrentName">-</span></div>
           <button class="btn btn-sm btn-ghost" onclick="utbChangeName()">🔄 Ganti Nama</button>
         </div>
+        <!-- Peringatan: item dicentang tapi belum di-submit -->
+        <div id="utbPendingBanner"></div>
+        <!-- Info item yang sedang dipilih orang lain & belum di-submit -->
+        <div id="utbHangingInfo"></div>
         <div class="section-title">🧃 Daftar UTB <span id="utbCount">0 item</span></div>
         <div class="utb-list" id="utbList"></div>
       </div>
 
       <div class="utb-order-bar" id="utbOrderBar" style="display:none">
+        <div class="utb-order-hint">⚠️ Belum di-submit! Klik Order agar item tidak menggantung</div>
         <button class="btn btn-primary w-full" onclick="openUtbConfirm()">✅ Order (<span id="utbSelectedCount">0</span> item · <span id="utbSelectedTotal">Rp 0</span>)</button>
       </div>
     </div>
@@ -587,6 +592,24 @@
   </div>
 </div>
 
+
+<!-- UTB LEAVE GUARD MODAL (muncul saat pindah tab dengan item belum di-submit) -->
+<div id="utbLeaveModal">
+  <div class="utb-confirm-box">
+    <div class="utb-confirm-icon">⚠️</div>
+    <div class="utb-confirm-title">Ada Item Belum Di-submit</div>
+    <div class="utb-leave-text">
+      Kamu punya <b><span id="utbLeaveCount">0</span> item</b> (<span id="utbLeaveTotal">Rp 0</span>) yang sudah dicentang tapi belum dikirim.
+      Item ini akan <b>menggantung</b> dan terkunci sehingga tidak bisa dipesan orang lain.
+    </div>
+    <div class="utb-confirm-list" id="utbLeaveList"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" onclick="utbLeaveSubmit()">✅ Kirim Pesanan Sekarang</button>
+      <button class="btn btn-danger" style="justify-content:center" onclick="utbLeaveRelease()">🔓 Lepas Semua &amp; Keluar</button>
+      <button class="btn btn-ghost" style="justify-content:center" onclick="closeUtbLeaveModal()">Tetap di Sini</button>
+    </div>
+  </div>
+</div>
 
 <!-- PRODUCT DETAIL MODAL -->
 <div id="productDetailModal">
