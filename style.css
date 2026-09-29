@@ -326,26 +326,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
 .utb-item-note { font-size: 11px; color: var(--text3); margin-top: 2px; }
 .utb-item-locked-by { font-size: 11px; font-weight: 700; color: var(--amber); margin-top: 3px; display:flex; align-items:center; gap:4px; }
 .utb-item-price { font-size: 14px; font-weight: 800; color: var(--brand); font-family: 'DM Mono', monospace; white-space: nowrap; }
-.utb-order-hint { font-size: 11px; font-weight: 700; color: #92400E; text-align: center; margin-bottom: 8px; }
-.utb-warn { background: linear-gradient(135deg,#FFF7E8,#FEF3C7); border: 1.5px solid #FDE68A; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; }
-.utb-warn.danger { background: var(--red-light); border-color: #FCA5A5; }
-.utb-warn-title { font-size: 13px; font-weight: 800; color: #92400E; margin-bottom: 4px; }
-.utb-warn.danger .utb-warn-title { color: var(--red); }
-.utb-warn-text { font-size: 11px; color: #92400E; line-height: 1.5; margin-bottom: 10px; }
-.utb-warn-actions { display: flex; gap: 8px; }
-.utb-warn-actions .btn { flex: 1; justify-content: center; }
-.utb-hang-card { background: var(--surface2); border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; }
-.utb-hang-title { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
-.utb-hang-sub { font-size: 11px; color: var(--text3); margin-bottom: 8px; }
-.utb-hang-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text2); padding: 6px 0; border-top: 1px solid var(--border); }
-.utb-hang-row.stale b { color: var(--red); }
-.utb-hang-row small { display: block; font-size: 11px; color: var(--text3); }
-.utb-item-locked-by.stale { color: var(--red); }
-.utb-release-btn { margin-left: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; border: none; border-radius: 6px; background: var(--red-light); color: var(--red); cursor: pointer; font-family: inherit; }
-.utb-leave-text { font-size: 12px; color: var(--text2); line-height: 1.5; text-align: center; margin-bottom: 12px; }
-.utb-leave-item { font-size: 12px; font-weight: 600; color: var(--text); padding: 6px 10px; background: var(--surface2); border-radius: var(--radius-sm); }
-#utbLeaveModal { position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9992;display:none;align-items:center;justify-content:center;padding:20px; }
-#utbLeaveModal.show { display:flex; }
 .utb-order-bar { position: sticky; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1.5px solid var(--border); padding: 12px 16px; margin: 12px -16px -16px; box-shadow: 0 -4px 16px rgba(0,0,0,0.08); }
 
 /* Delete by date card */
@@ -444,5 +424,3 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
 .product-card-ghost { opacity: 0.35; }
 .product-card-chosen { box-shadow: var(--shadow-lg); transform: scale(1.02); }
 .product-card-drag { opacity: 0.95; }
-/* UTB auto-release countdown */
-.utb-countdown { font-family: 'DM Mono', monospace; font-weight: 800; }
