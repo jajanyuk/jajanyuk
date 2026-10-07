@@ -494,3 +494,36 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0,0,0,0.06);
 }
+
+/* ============================================================
+   RUNNING TEXT (UTB REMINDER)
+============================================================ */
+.running-text-container {
+  background: linear-gradient(135deg, #FFF7E8, #FEF3C7);
+  border: 1.5px solid #FDE68A;
+  border-radius: var(--radius-sm);
+  padding: 10px 0;
+  margin-bottom: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.08);
+}
+
+.running-text {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #92400E;
+  padding-left: 100%; /* Starts just outside the right edge */
+  animation: scrollText 14s linear infinite; /* Adjust '14s' to make it faster/slower */
+}
+
+@keyframes scrollText {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
