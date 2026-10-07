@@ -1294,10 +1294,11 @@ function renderUtb() {
     const checked       = a.claimedBy === utbUserName;
     return `
     <div class="utb-item ${checked ? 'checked' : ''} ${lockedByOther ? 'locked' : ''}">
-      <div class="utb-checkbox-wrap">
+      <label class="utb-checkbox-wrap">
         <input type="checkbox" ${checked ? 'checked' : ''} ${lockedByOther ? 'disabled' : ''}
           onchange="toggleUtbItem('${a.firestoreId}', this.checked)">
-      </div>
+        <span class="custom-check"></span>
+      </label>
       <div class="utb-item-info">
         <div class="utb-item-name">${a.item || '-'}${a.qty > 1 ? ' x' + a.qty : ''}</div>
         ${a.note ? '<div class="utb-item-note">📝 ' + a.note + '</div>' : ''}

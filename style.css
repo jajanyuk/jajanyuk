@@ -318,9 +318,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
 .utb-item { display:flex; align-items:center; gap:12px; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 8px; transition: all 0.2s; }
 .utb-item.checked { background: var(--green-light); border-color: #86EFAC; }
 .utb-item.locked { background: var(--surface2); border-color: var(--border); opacity: 0.65; }
-.utb-checkbox-wrap { flex-shrink: 0; display:flex; align-items:center; }
-.utb-checkbox-wrap input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--green-dark); cursor: pointer; }
-.utb-checkbox-wrap input[type=checkbox]:disabled { cursor: not-allowed; }
 .utb-item-info { flex: 1; min-width: 0; }
 .utb-item-name { font-size: 14px; font-weight: 700; color: var(--text); }
 .utb-item-note { font-size: 11px; color: var(--text3); margin-top: 2px; }
@@ -526,4 +523,95 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   100% {
     transform: translateX(-100%);
   }
+}
+
+
+/* ============================================================
+   CUSTOM ANIMATED CHECKBOX UTB
+============================================================ */
+.utb-checkbox-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Sembunyikan checkbox asli bawaan browser */
+.utb-checkbox-wrap input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+/* Kotak checkbox kustom (rounded box) */
+.custom-check {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 28px;
+  width: 28px;
+  background-color: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: 8px; /* Lebih modern membulat */
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+/* Efek saat mouse mendekat (hover) */
+.utb-checkbox-wrap:hover input:not(:disabled) ~ .custom-check {
+  border-color: var(--brand);
+  transform: scale(1.05);
+}
+
+/* Efek saat dicentang (Checked) */
+.utb-checkbox-wrap input:checked ~ .custom-check {
+  background-color: var(--green-dark);
+  border-color: var(--green-dark);
+  animation: checkBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Ikon Ceklis (awalnya disembunyikan) */
+.custom-check:after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 9px;
+  top: 4px;
+  width: 6px;
+  height: 12px;
+  border: solid white;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+/* Munculkan Ikon Ceklis saat dicentang */
+.utb-checkbox-wrap input:checked ~ .custom-check:after {
+  display: block;
+  animation: checkDraw 0.3s ease-in-out forwards;
+}
+
+/* Status Disabled (jika item sudah dipilih orang lain) */
+.utb-checkbox-wrap input:disabled ~ .custom-check {
+  background-color: var(--surface2);
+  border-color: var(--border);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Animasi Memantul (Bounce) */
+@keyframes checkBounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.85); }
+  100% { transform: scale(1); }
+}
+
+/* Animasi Ceklis Digambar */
+@keyframes checkDraw {
+  0% { height: 0; width: 0; opacity: 0; }
+  100% { height: 12px; width: 6px; opacity: 1; }
 }
