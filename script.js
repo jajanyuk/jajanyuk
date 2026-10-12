@@ -13,7 +13,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  where
+  where,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // ============================================================
@@ -1219,30 +1220,61 @@ window.submitUtbOrder = async function() {
   const confirmBtn = document.getElementById('utbConfirmBtn');
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Mengirim...'; }
   setSyncBadge('loading');
+  
   try {
     const now = Date.now();
-    await Promise.all(mySelected.map((a, i) =>
-  addDoc(ordersCol, {
-    buyer: utbUserName,
-    item: a.item,
-    price: a.price,
-    qty: a.qty || 1,
-    note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
-    paid: false,
-    date: a.date || today(),
-    createdAt: now + i,
-    source: 'utb',
-    lokasi: utbUserLokasi,
-    antrianId: a.firestoreId
-  })
-));
-    await Promise.all(mySelected.map(a =>
-      updateDoc(doc(db, 'antrian', a.firestoreId), { sent: true, buyer: utbUserName, claimedBy: utbUserName, claimedByLokasi: utbUserLokasi, sentAt: Date.now() })
-    ));
+    
+    // Inisiasi Firestore Batch
+    const batch = writeBatch(db);
+
+    mySelected.forEach((a, i) => {
+      // 1. Siapkan data penambahan ke ordersCol
+      const newOrderRef = doc(ordersCol); // Generate ID dokumen baru secara otomatis
+      batch.set(newOrderRef, {
+        buyer: utbUserName,
+        item: a.item,
+        price: a.price,
+        qty: a.qty || 1,
+        note: (a.note ? a.note + ' · ' : '') + '📍 ' + utbUserLokasi,
+        paid: false,
+        date: a.date || today(),
+        createdAt: now + i,
+        source: 'utb',
+        lokasi: utbUserLokasi,
+        antrianId: a.firestoreId
+      });
+      
+      // 2. Siapkan data update antrian
+      const antrianRef = doc(db, 'antrian', a.firestoreId);
+      batch.update(antrianRef, { 
+        sent: true, 
+        buyer: utbUserName, 
+        claimedBy: utbUserName, 
+        claimedByLokasi: utbUserLokasi, 
+        sentAt: Date.now() 
+      });
+    });
+
+    // 3. Cek dan siapkan data update visibilitas tanggal (jika ada)
+    const uniqueDates = [...new Set(mySelected.map(a => a.date || today()))];
+    const datesToEnable = uniqueDates.filter(d => pesanankuVisibleDates[d] !== true);
+
+    if (datesToEnable.length > 0) {
+      const dateUpdates = {};
+      datesToEnable.forEach(d => { dateUpdates[d] = true; });
+      const settingsRef = doc(db, 'settings', 'pesanankuVisibility');
+      batch.set(settingsRef, { dates: dateUpdates }, { merge: true });
+    }
+
+    // 4. Eksekusi SEMUA operasi di atas dalam SATU KALI request ke server
+    await batch.commit();
+
     closeUtbConfirm();
     showToast('Pesanan kamu berhasil dikirim! 🎉');
     setSyncBadge('ok');
+    
   } catch(e) {
+    console.error(e);
     showToast('Gagal order, coba lagi!', '❌'); setSyncBadge('err');
   } finally {
     if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ Kirim Pesanan'; }
@@ -1488,11 +1520,8 @@ window.renderMyOrders = function renderMyOrders() {
 
   // Admin selalu bisa lihat semua data. User biasa hanya lihat tanggal
   // yang sudah diizinkan admin lewat panel "Atur Tampilan Untuk User".
-  if (!isAdmin) {
-    myOrders = myOrders.filter(o => pesanankuVisibleDates[pesanankuDateKey(o)] === true);
-  }
-
-  // Pencarian berdasarkan nama saja
+myOrders = myOrders.filter(o => pesanankuVisibleDates[pesanankuDateKey(o)] === true);
+// Pencarian berdasarkan nama saja
   const searchEl = document.getElementById('filterMyOrdersBuyer');
   const search   = searchEl ? searchEl.value.toLowerCase().trim() : '';
   if (search) {
