@@ -409,7 +409,10 @@ window.switchTab = function(name) {
   }
 
   // Load data on-demand: hanya start listener Firestore untuk tab yang baru dibuka
-  if (name === 'beranda')   { startProductsListener(); renderProducts(); }
+  if (name === 'beranda')   { 
+    if (typeof startProductsListener === 'function') startProductsListener(); 
+    if (window.renderProducts) window.renderProducts(); 
+  }
   if (name === 'antrian')   { startAntrianListener(); renderAntrian(); }
   if (name === 'pesanan')   { startOrdersListener(); startDepositsListener(); window.renderOrders(); }
   if (name === 'ringkasan') { startOrdersListener(); renderSummary(); }
@@ -2316,38 +2319,6 @@ document.getElementById('utbConfirmModal').addEventListener('click', function(e)
 });
 
 // ============================================================
-// INIT
-// ============================================================
-applyAdminAccess(); // isAdmin selalu false di awal -> ini otomatis switchTab('qris') & renderQris()
-
-// Kolom tanggal hapus dikosongkan secara default - user harus pilih tanggal dulu
-updateDeleteDateInfo();
-
-// Default tanggal item untuk form manual (antrian & pesanan) = hari ini
-const antrianItemDateEl = document.getElementById('antrianItemDate');
-if (antrianItemDateEl && !antrianItemDateEl.value) antrianItemDateEl.value = today();
-const inItemDateEl = document.getElementById('inItemDate');
-if (inItemDateEl && !inItemDateEl.value) inItemDateEl.value = today();
-
-// Filter listeners
-document.getElementById('filterBuyer').addEventListener('input', () => window.renderOrders());
-document.getElementById('filterStatus').addEventListener('change', () => window.renderOrders());
-
-const filterTagihanBuyerEl = document.getElementById('filterTagihanBuyer');
-if (filterTagihanBuyerEl) filterTagihanBuyerEl.addEventListener('input', () => window.renderBuyerList());
-
-const filterMyOrdersBuyerEl = document.getElementById('filterMyOrdersBuyer');
-if (filterMyOrdersBuyerEl) filterMyOrdersBuyerEl.addEventListener('input', () => renderMyOrders());
-
-// Delete date listeners untuk update info
-document.getElementById('deleteDateFrom').addEventListener('change', updateDeleteDateInfo);
-document.getElementById('deleteDateTo').addEventListener('change', updateDeleteDateInfo);
-
-setTimeout(() => {
-  document.getElementById('loadingOverlay').style.display = 'none';
-}, 1500);
-
-// ============================================================
 // BERANDA / KATALOG PRODUK
 // ============================================================
 
@@ -2572,3 +2543,36 @@ window.deleteProductFromDetail = async function() {
 document.getElementById('productDetailModal').addEventListener('click', function(e) {
   if (e.target === this) window.closeProductDetail();
 });
+
+
+// ============================================================
+// INIT
+// ============================================================
+applyAdminAccess(); // isAdmin selalu false di awal -> ini otomatis switchTab('qris') & renderQris()
+
+// Kolom tanggal hapus dikosongkan secara default - user harus pilih tanggal dulu
+updateDeleteDateInfo();
+
+// Default tanggal item untuk form manual (antrian & pesanan) = hari ini
+const antrianItemDateEl = document.getElementById('antrianItemDate');
+if (antrianItemDateEl && !antrianItemDateEl.value) antrianItemDateEl.value = today();
+const inItemDateEl = document.getElementById('inItemDate');
+if (inItemDateEl && !inItemDateEl.value) inItemDateEl.value = today();
+
+// Filter listeners
+document.getElementById('filterBuyer').addEventListener('input', () => window.renderOrders());
+document.getElementById('filterStatus').addEventListener('change', () => window.renderOrders());
+
+const filterTagihanBuyerEl = document.getElementById('filterTagihanBuyer');
+if (filterTagihanBuyerEl) filterTagihanBuyerEl.addEventListener('input', () => window.renderBuyerList());
+
+const filterMyOrdersBuyerEl = document.getElementById('filterMyOrdersBuyer');
+if (filterMyOrdersBuyerEl) filterMyOrdersBuyerEl.addEventListener('input', () => renderMyOrders());
+
+// Delete date listeners untuk update info
+document.getElementById('deleteDateFrom').addEventListener('change', updateDeleteDateInfo);
+document.getElementById('deleteDateTo').addEventListener('change', updateDeleteDateInfo);
+
+setTimeout(() => {
+  document.getElementById('loadingOverlay').style.display = 'none';
+}, 1500);
