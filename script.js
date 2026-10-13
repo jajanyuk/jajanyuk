@@ -1740,30 +1740,45 @@ window.setPeriod = function(period, btn) {
 };
 
 function getDateRange(period) {
-  const now = new Date(); const dates = [];
-  if (period === 'daily') return [today()];
+  const now = new Date(); 
+  const dates = [];
+  
+  // Helper: Format tanggal konsisten ke zona waktu lokal (menghindari bug UTC)
+  function formatLocal(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+
+  if (period === 'daily') return [formatLocal(now)];
+  
   if (period === 'custom') {
     const from = document.getElementById('summaryDateFrom')?.value;
     const to   = document.getElementById('summaryDateTo')?.value;
-    if (!from || !to) return [today()];
+    if (!from || !to) return [formatLocal(now)]; // Default hari ini jika kosong
+    
     const start = new Date(from + 'T00:00:00');
     const end   = new Date(to   + 'T00:00:00');
     const d = new Date(start);
+    
     while (d <= end) {
-      dates.push(d.toISOString().split('T')[0]);
+      dates.push(formatLocal(d));
       d.setDate(d.getDate() + 1);
     }
-    return dates.length ? dates : [today()];
+    return dates.length ? dates : [formatLocal(now)];
   }
+  
   const days = period === 'weekly' ? 6 : 29;
   for (let i = days; i >= 0; i--) {
-    const d = new Date(now); d.setDate(d.getDate() - i);
-    dates.push(d.toISOString().split('T')[0]);
+    const d = new Date(now); 
+    d.setDate(d.getDate() - i);
+    dates.push(formatLocal(d));
   }
   return dates;
 }
 
-function renderSummary() {
+window.renderSummary = function() {
   const dates       = getDateRange(currentPeriod);
   const rangeOrders = orders.filter(o => dates.includes(o.date));
   const totalOmzet  = rangeOrders.reduce((s, o) => s + o.price * o.qty, 0);
@@ -1817,6 +1832,13 @@ function renderSummary() {
         return from && to ? from + ' s/d ' + to : 'Periode Kustom';
       })();
 
+  // ================================================================
+  // PERBAIKAN: Simpan state pencarian dan fokus sebelum dirender ulang
+  // ================================================================
+  const searchInputEl = document.getElementById('filterRingBuyer');
+  const isSearchFocused = document.activeElement && document.activeElement.id === 'filterRingBuyer';
+  const searchValue = searchInputEl ? searchInputEl.value : '';
+
   document.getElementById('summaryContent').innerHTML = `
     <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">${periodLabel}</div>
     <div class="summary-grid">
@@ -1838,15 +1860,16 @@ function renderSummary() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div class="section-title" style="font-size:13px;margin-bottom:0">👥 Per Pembeli</div>
         <div style="display:flex;gap:6px;align-items:center">
-          <input type="text" class="filter-input" id="filterRingBuyer" placeholder="🔍 Nama..." style="width:110px;font-size:12px;padding:6px 10px" oninput="renderSummary()">
+          <!-- PERBAIKAN: Masukkan value pencarian agar text tidak hilang -->
+          <input type="text" class="filter-input" id="filterRingBuyer" placeholder="🔍 Nama..." style="width:110px;font-size:12px;padding:6px 10px" oninput="renderSummary()" value="${searchValue}">
           <button class="sort-btn active" id="ringSortBtn" onclick="toggleRingSummarySort()" title="Urutkan nama">A↑Z</button>
         </div>
       </div>
       <div id="ringBuyerRows">
       ${(() => {
-        const search = document.getElementById('filterRingBuyer') ? document.getElementById('filterRingBuyer').value.toLowerCase().trim() : '';
         let entries = Object.entries(buyerBreakdown);
-        if (search) entries = entries.filter(([n]) => n.toLowerCase().includes(search));
+        // PERBAIKAN: Logika filter pencarian yang lebih solid
+        if (searchValue.trim()) entries = entries.filter(([n]) => n.toLowerCase().includes(searchValue.toLowerCase().trim()));
         entries = entries.sort((a, b) => {
           const na = a[0].toLowerCase(); const nb = b[0].toLowerCase();
           return ringSortMode === 'asc' ? na.localeCompare(nb, 'id') : nb.localeCompare(na, 'id');
@@ -1866,7 +1889,18 @@ function renderSummary() {
       </div>
     </div>` : `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text">Belum ada data penjualan</div></div>`}
   `;
-}
+
+  // ================================================================
+  // PERBAIKAN: Kembalikan fokus dan kursor ke posisi semula
+  // ================================================================
+  if (isSearchFocused) {
+    const newSearchInput = document.getElementById('filterRingBuyer');
+    if (newSearchInput) {
+      newSearchInput.focus();
+      newSearchInput.setSelectionRange(searchValue.length, searchValue.length);
+    }
+  }
+};
 
 // ============================================================
 // TAGIHAN
