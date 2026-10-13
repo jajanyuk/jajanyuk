@@ -40,6 +40,7 @@ const ordersCol   = collection(db, 'orders');
 const depositsCol = collection(db, 'deposits');
 const settingsCol = collection(db, 'settings');
 const antrianCol  = collection(db, 'antrian');
+const productsCol = collection(db, 'products');
 
 // ============================================================
 // STATE
@@ -50,6 +51,11 @@ let antrian        = [];
 let currentPeriod  = 'daily';
 let selectedBuyer  = null;
 let qrisOverlayNominal = '';
+let products = [];
+let productsListenerStarted = false;
+let editingProductId = null;
+let tempProductImage = '';
+let sortableInstance = null;
 
 // Date filter state
 let antrianDateMode  = 'today';
@@ -140,17 +146,22 @@ function checkPin() {
 function applyAdminAccess() {
   const adminTabs = ['navAntrian', 'navPesanan', 'navDeposit', 'navRingkasan', 'navTagihan'];
   const badge = document.getElementById('adminBadge');
+  
   if (isAdmin) {
     adminTabs.forEach(id => document.getElementById(id).classList.remove('locked'));
     badge.textContent = '🛡️ Admin';
     badge.className = 'admin-badge is-admin';
+    document.getElementById('btnOpenProductForm').style.display = 'inline-flex'; // <-- TAMBAH INI
     switchTab('antrian');
   } else {
     adminTabs.forEach(id => document.getElementById(id).classList.add('locked'));
     badge.textContent = '👤 User';
     badge.className = 'admin-badge is-user';
-    switchTab('qris');
+    document.getElementById('btnOpenProductForm').style.display = 'none'; // <-- TAMBAH INI
+    window.closeProductForm && window.closeProductForm(); // <-- TAMBAH INI (tutup form jika terbuka)
+    switchTab('beranda'); // Ubah *default* user biasa ke Beranda, bukan QRIS
   }
+  if (isTabActive('beranda') && window.renderProducts) renderProducts(); // Re-render untuk show/hide fitur edit
 }
 
 // ============================================================
@@ -398,6 +409,7 @@ window.switchTab = function(name) {
   }
 
   // Load data on-demand: hanya start listener Firestore untuk tab yang baru dibuka
+  if (name === 'beranda')   { startProductsListener(); renderProducts(); }
   if (name === 'antrian')   { startAntrianListener(); renderAntrian(); }
   if (name === 'pesanan')   { startOrdersListener(); startDepositsListener(); window.renderOrders(); }
   if (name === 'ringkasan') { startOrdersListener(); renderSummary(); }
@@ -2334,3 +2346,229 @@ document.getElementById('deleteDateTo').addEventListener('change', updateDeleteD
 setTimeout(() => {
   document.getElementById('loadingOverlay').style.display = 'none';
 }, 1500);
+
+// ============================================================
+// BERANDA / KATALOG PRODUK
+// ============================================================
+
+function startProductsListener() {
+  if (productsListenerStarted) return;
+  productsListenerStarted = true;
+  onSnapshot(query(productsCol, orderBy('order', 'asc')), snap => {
+    products = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+    if (isTabActive('beranda')) window.renderProducts();
+  }, err => console.error('Products listener error:', err));
+}
+
+// Fitur Rahasia: Auto-Compressor Gambar agar DB Ringan!
+window.handleProductImageUpload = function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      // Resize gambar maksimal lebar/tinggi 600px
+      const canvas = document.createElement('canvas');
+      const MAX_SIZE = 600;
+      let width = img.width;
+      let height = img.height;
+      if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
+      else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+      canvas.width = width; canvas.height = height;
+      
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      // Kompres menjadi JPEG kualitas 70%
+      tempProductImage = canvas.toDataURL('image/jpeg', 0.7); 
+      
+      const dropzone = document.getElementById('productImageDropzone');
+      dropzone.innerHTML = `<img src="${tempProductImage}" style="max-width:100%;max-height:160px;border-radius:var(--radius-sm);object-fit:cover;">`;
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+window.openProductForm = function(id = null) {
+  editingProductId = id;
+  const card = document.getElementById('productFormCard');
+  const title = document.getElementById('productFormTitle');
+  const dropzone = document.getElementById('productImageDropzone');
+  
+  if (id) {
+    const p = products.find(x => x.firestoreId === id);
+    if (!p) return;
+    title.innerHTML = '✏️ Edit Produk';
+    document.getElementById('productName').value = p.name || '';
+    document.getElementById('productDesc').value = p.desc || '';
+    document.getElementById('productPrice').value = p.price || '';
+    document.getElementById('productAvailable').checked = p.available !== false;
+    document.getElementById('productAvailableHint').textContent = p.available !== false ? 'Produk tersedia & bisa dipesan' : 'Produk ditandai Habis';
+    tempProductImage = p.image || '';
+    dropzone.innerHTML = tempProductImage 
+      ? `<img src="${tempProductImage}" style="max-width:100%;max-height:160px;border-radius:var(--radius-sm);object-fit:cover;">`
+      : `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk upload gambar</div>`;
+  } else {
+    title.innerHTML = '➕ Tambah Produk Baru';
+    document.getElementById('productName').value = '';
+    document.getElementById('productDesc').value = '';
+    document.getElementById('productPrice').value = '';
+    document.getElementById('productAvailable').checked = true;
+    document.getElementById('productAvailableHint').textContent = 'Produk tersedia & bisa dipesan';
+    tempProductImage = '';
+    dropzone.innerHTML = `<div class="upload-icon">📷</div><div class="upload-text">Ketuk untuk upload gambar produk</div>`;
+  }
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth' });
+};
+
+window.closeProductForm = function() {
+  const card = document.getElementById('productFormCard');
+  if(card) card.style.display = 'none';
+  editingProductId = null;
+};
+
+window.saveProduct = async function() {
+  const name = document.getElementById('productName').value.trim();
+  const desc = document.getElementById('productDesc').value.trim();
+  const price = parseFloat(document.getElementById('productPrice').value);
+  const available = document.getElementById('productAvailable').checked;
+  
+  if (!name || !price) { showToast('Nama dan harga wajib diisi!', '⚠️'); return; }
+  
+  const btn = document.getElementById('btnSaveProduct');
+  btn.disabled = true; btn.textContent = '⏳ Menyimpan...';
+  setSyncBadge('loading');
+  
+  try {
+    if (editingProductId) {
+      await updateDoc(doc(db, 'products', editingProductId), { name, desc, price, available, image: tempProductImage });
+      showToast('Produk diperbarui! ✅');
+    } else {
+      const maxOrder = products.length > 0 ? Math.max(...products.map(p => p.order || 0)) : 0;
+      await addDoc(productsCol, { name, desc, price, available, image: tempProductImage, order: maxOrder + 1, createdAt: Date.now() });
+      showToast('Produk ditambahkan! 🎉');
+    }
+    closeProductForm();
+    setSyncBadge('ok');
+  } catch(e) {
+    showToast('Gagal menyimpan produk', '❌'); setSyncBadge('err');
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Simpan Produk';
+  }
+};
+
+window.renderProducts = function() {
+  const grid = document.getElementById('productGrid');
+  const countEl = document.getElementById('productCount');
+  const hint = document.getElementById('productSortHint');
+  const empty = document.getElementById('productEmptyHint');
+  if (!grid) return;
+  
+  countEl.textContent = products.length + ' item';
+  
+  if (products.length === 0) {
+    grid.innerHTML = ''; empty.style.display = 'block'; hint.style.display = 'none'; return;
+  }
+  empty.style.display = 'none';
+  hint.style.display = isAdmin && products.length > 1 ? 'block' : 'none';
+  
+  grid.innerHTML = products.map(p => {
+    const isAvail = p.available !== false;
+    const imgHtml = p.image 
+      ? `<img src="${p.image}" class="product-card-img" alt="${p.name}">`
+      : `<div class="product-card-img-placeholder">🍱</div>`;
+    const badgeHtml = !isAvail ? `<div class="product-badge habis">HABIS</div>` : '';
+    const dragHandle = isAdmin ? `<div class="product-drag-handle">⠿</div>` : '';
+    
+    return `
+    <div class="product-card ${!isAvail ? 'unavailable' : ''}" data-id="${p.firestoreId}" onclick="openProductDetail('${p.firestoreId}')">
+      <div class="product-card-img-wrap">${dragHandle}${badgeHtml}${imgHtml}</div>
+      <div class="product-card-body">
+        <div class="product-card-name">${p.name}</div>
+        <div class="product-card-price">${rupiah(p.price)}</div>
+        ${p.desc ? `<div class="product-card-desc">${p.desc}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  
+  initSortable();
+};
+
+function initSortable() {
+  if (!isAdmin || typeof Sortable === 'undefined') return;
+  const grid = document.getElementById('productGrid');
+  if (sortableInstance) sortableInstance.destroy();
+  
+  sortableInstance = new Sortable(grid, {
+    handle: '.product-drag-handle',
+    animation: 150,
+    ghostClass: 'product-card-ghost',
+    chosenClass: 'product-card-chosen',
+    dragClass: 'product-card-drag',
+    onEnd: async function() {
+      const itemEls = grid.querySelectorAll('.product-card');
+      const batch = writeBatch(db);
+      itemEls.forEach((el, index) => {
+        batch.update(doc(db, 'products', el.getAttribute('data-id')), { order: index });
+      });
+      setSyncBadge('loading');
+      try { await batch.commit(); setSyncBadge('ok'); } catch(e) { setSyncBadge('err'); }
+    }
+  });
+}
+
+window.openProductDetail = function(id) {
+  // Cegah buka detail jika admin sedang klik icon '⠿' (drag & drop)
+  if (window.event && window.event.target.classList.contains('product-drag-handle')) return;
+  
+  const p = products.find(x => x.firestoreId === id);
+  if (!p) return;
+  
+  const isAvail = p.available !== false;
+  const imgWrap = document.getElementById('productDetailImgWrap');
+  
+  imgWrap.className = 'product-detail-img-wrap ' + (!isAvail ? 'unavailable' : '');
+  imgWrap.innerHTML = p.image 
+    ? `<img src="${p.image}" alt="${p.name}">` + (!isAvail ? '<div class="product-badge habis">HABIS</div>' : '')
+    : `<div class="product-detail-img-placeholder">🍱</div>` + (!isAvail ? '<div class="product-badge habis">HABIS</div>' : '');
+    
+  document.getElementById('productDetailName').textContent = p.name;
+  document.getElementById('productDetailPrice').textContent = rupiah(p.price);
+  document.getElementById('productDetailDesc').textContent = p.desc || 'Tidak ada deskripsi rinci untuk produk ini.';
+  
+  const actions = document.getElementById('productDetailAdminActions');
+  actions.style.display = isAdmin ? 'flex' : 'none';
+  actions.dataset.id = id; // Simpan id untuk action edit/hapus
+  
+  document.getElementById('productDetailModal').classList.add('show');
+};
+
+window.closeProductDetail = function() {
+  document.getElementById('productDetailModal').classList.remove('show');
+};
+
+window.editProductFromDetail = function() {
+  const id = document.getElementById('productDetailAdminActions').dataset.id;
+  closeProductDetail();
+  openProductForm(id);
+};
+
+window.deleteProductFromDetail = async function() {
+  const id = document.getElementById('productDetailAdminActions').dataset.id;
+  if (!confirm('Hapus produk ini dari katalog?')) return;
+  
+  closeProductDetail();
+  setSyncBadge('loading');
+  try {
+    await deleteDoc(doc(db, 'products', id));
+    showToast('Produk dihapus! 🗑️');
+    setSyncBadge('ok');
+  } catch(e) { showToast('Gagal menghapus produk!', '❌'); setSyncBadge('err'); }
+};
+
+// Tutup modal jika user klik di luar kotak
+document.getElementById('productDetailModal').addEventListener('click', function(e) {
+  if (e.target === this) window.closeProductDetail();
+});
