@@ -56,6 +56,7 @@ let productsListenerStarted = false;
 let editingProductId = null;
 let tempProductImage = '';
 let sortableInstance = null;
+let productsLoadedOnce = false;
 
 // Date filter state
 let antrianDateMode  = 'today';
@@ -159,7 +160,7 @@ function applyAdminAccess() {
     badge.className = 'admin-badge is-user';
     document.getElementById('btnOpenProductForm').style.display = 'none'; // <-- TAMBAH INI
     window.closeProductForm && window.closeProductForm(); // <-- TAMBAH INI (tutup form jika terbuka)
-    switchTab('beranda'); // Ubah *default* user biasa ke Beranda, bukan QRIS
+    switchTab('utb'); // Ubah *default* user biasa ke Beranda, bukan QRIS
   }
   if (isTabActive('beranda') && window.renderProducts) renderProducts(); // Re-render untuk show/hide fitur edit
 }
@@ -2323,10 +2324,25 @@ document.getElementById('utbConfirmModal').addEventListener('click', function(e)
 // ============================================================
 
 function startProductsListener() {
-  if (productsListenerStarted) return;
-  productsListenerStarted = true;
+  // Jika sudah pernah load sebelumnya di sesi ini, jangan konek ke firestore lagi (Hemat 100%)
+  if (productsLoadedOnce) return;
+  productsLoadedOnce = true;
+
+  // Ambil dari Cache LocalStorage agar instan
+  const cachedProducts = localStorage.getItem('jajanyuk_katalog');
+  if (cachedProducts) {
+    try {
+      products = JSON.parse(cachedProducts);
+      if (isTabActive('beranda')) window.renderProducts();
+    } catch(e) {
+      console.log('Gagal baca cache', e);
+    }
+  }
+
+  // Tarik data terbaru dari Firestore di background (hanya 1x per sesi buka tab)
   onSnapshot(query(productsCol, orderBy('order', 'asc')), snap => {
     products = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+    localStorage.setItem('jajanyuk_katalog', JSON.stringify(products));
     if (isTabActive('beranda')) window.renderProducts();
   }, err => console.error('Products listener error:', err));
 }
@@ -2548,6 +2564,10 @@ document.getElementById('productDetailModal').addEventListener('click', function
 // ============================================================
 // INIT
 // ============================================================
+if (!sessionStorage.getItem('jajanyuk_session_active')) {
+  localStorage.removeItem('jajanyuk_katalog'); // Bersihkan cache lama
+  sessionStorage.setItem('jajanyuk_session_active', 'true'); // Tandai sesi aktif
+}
 applyAdminAccess(); // isAdmin selalu false di awal -> ini otomatis switchTab('qris') & renderQris()
 
 // Kolom tanggal hapus dikosongkan secara default - user harus pilih tanggal dulu
