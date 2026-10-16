@@ -664,3 +664,14 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   border: 1px solid #BFDBFE !important; 
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15), inset 0 1px 0 rgba(255,255,255,0.6);
 }
+
+/* Animasi Icon Berputar saat Sinkronisasi */
+@keyframes spinBadge {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.sync-badge .spin {
+  display: inline-block;
+  animation: spinBadge 1s linear infinite;
+}

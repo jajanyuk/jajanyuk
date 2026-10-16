@@ -274,8 +274,8 @@ function showToast(msg, icon = '✅') {
 function setSyncBadge(status) {
   const b = document.getElementById('syncBadge');
   b.className = 'sync-badge';
-  if (status === 'ok')      { b.classList.add('sync-ok');      b.textContent = '☁️ Tersinkron'; }
-  else if (status === 'loading') { b.classList.add('sync-loading'); b.innerHTML = '<span class="spin">⏳</span> Menyimpan'; }
+  if (status === 'ok')      { b.classList.add('sync-ok');      b.textContent = '☁️ Sync'; }
+  else if (status === 'loading') { b.classList.add('sync-loading'); b.innerHTML = '<span class="spin">⏳</span> Sync'; }
   else                      { b.classList.add('sync-err');     b.textContent = '❌ Gagal Sync'; }
 }
 
