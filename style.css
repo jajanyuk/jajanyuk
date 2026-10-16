@@ -675,3 +675,87 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   display: inline-block;
   animation: spinBadge 1s linear infinite;
 }
+
+
+/* ============================================================
+   RESPONSIVE DESIGN (Menyesuaikan Layar HP, Tablet, & PC)
+   ============================================================ */
+
+/* Untuk Layar HP / Mobile (Lebar max 768px) */
+@media screen and (max-width: 768px) {
+  body {
+    font-size: 14px; /* Perkecil sedikit teks standar agar proporsional di HP */
+    padding: 5px;
+  }
+
+  /* Kontainer Utama / Kartu Aplikasi */
+  .container, .card, .main-container {
+    padding: 10px !important;
+    margin: 5px auto !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* Navigasi Tab / Menu Atas */
+  .nav-tabs, .tab-header {
+    display: flex;
+    overflow-x: auto; /* Bisa digeser horizontal jika menu banyak */
+    white-space: nowrap;
+    padding-bottom: 5px;
+  }
+
+  .nav-tabs button, .tab-btn {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  /* Grid Katalog Produk Beranda: 2 Kolom di HP */
+  .product-grid, .menu-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Tabel agar bisa digeser horizontal jika melebihi layar HP */
+  .table-responsive, table {
+    width: 100%;
+    overflow-x: auto;
+    display: block;
+  }
+
+  /* Tombol aksi agar lebih besar dan nyaman disentuh jari */
+  button, .btn {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+}
+
+/* Untuk Layar Sangat Kecil / HP Sempit (Lebar max 480px) */
+@media screen and (max-width: 480px) {
+  /* Katalog Produk Beranda: 1 atau 2 kolom rapat */
+  .product-grid, .menu-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  /* Ukuran Judul Utama */
+  h1, .header-title {
+    font-size: 1.2rem !important;
+  }
+}
+
+/* Untuk Layar Tablet & Desktop (Lebar di atas 769px) */
+@media screen and (min-width: 769px) {
+  .container {
+    max-width: 800px; /* Batasi lebar maksimal agar tetap rapi dibaca di layar PC */
+    margin: 20px auto;
+  }
+
+  /* Katalog Produk Beranda: 3-4 Kolom di Layar Lebar */
+  .product-grid, .menu-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 15px !important;
+  }
+}
