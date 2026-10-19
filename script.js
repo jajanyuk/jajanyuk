@@ -86,7 +86,7 @@ let ordersLoaded = false;            // snapshot pertama koleksi orders sudah di
 // ============================================================
 let isAdmin = false;
 let pinBuffer = '';
-const ADMIN_PIN = '3557';
+const ADMIN_PIN_HASH = '1faab65633a6ddbb5c0e1ccb9de0e51e1ba1cce5db7c95e5dfba91b2df94d48a';
 
 window.openAdminModal = function() {
   pinBuffer = '';
@@ -127,12 +127,22 @@ function updatePinDots() {
   }
 }
 
-function checkPin() {
-  if (pinBuffer === ADMIN_PIN) {
-    isAdmin = !isAdmin;
+async function hashPIN(pin) {
+  const msgBuffer = new TextEncoder().encode(pin);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Perbarui fungsi checkPin menjadi asynchronous
+async function checkPin() {
+  const hashedInput = await hashPIN(pinBuffer);
+  
+  if (hashedInput === ADMIN_PIN_HASH) {
+    isAdmin = true; // Langsung true, hindari toggle bolak-balik
     document.getElementById('adminModal').classList.remove('show');
     applyAdminAccess();
-    showToast(isAdmin ? '🔓 Mode Admin aktif!' : '🔒 Keluar dari Admin', isAdmin ? '🛡️' : '👤');
+    showToast('🔓 Mode Admin aktif!', '🛡️');
   } else {
     for (let i = 0; i < 4; i++) document.getElementById('dot' + i).classList.add('error');
     document.getElementById('pinErrorMsg').textContent = 'PIN salah, coba lagi';
