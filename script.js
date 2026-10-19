@@ -1228,6 +1228,17 @@ window.closeUtbConfirm = function() {
   document.getElementById('utbConfirmModal').classList.remove('show');
 };
 
+function debounce(func, wait = 250) {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+// Bungkus listener pencarian dengan debounce
+document.getElementById('filterBuyer').addEventListener('input', debounce(() => window.renderOrders()));
+
 window.submitUtbOrder = async function() {
   if (!utbUserName) return;
   const mySelected = antrian.filter(a => !a.sent && a.claimedBy === utbUserName);
@@ -2580,7 +2591,8 @@ const inItemDateEl = document.getElementById('inItemDate');
 if (inItemDateEl && !inItemDateEl.value) inItemDateEl.value = today();
 
 // Filter listeners
-document.getElementById('filterBuyer').addEventListener('input', () => window.renderOrders());
+document.getElementById('filterBuyer').addEventListener('input', debounce(() => window.renderOrders()));
+//document.getElementById('filterBuyer').addEventListener('input', () => window.renderOrders());
 document.getElementById('filterStatus').addEventListener('change', () => window.renderOrders());
 
 const filterTagihanBuyerEl = document.getElementById('filterTagihanBuyer');
@@ -2593,6 +2605,5 @@ if (filterMyOrdersBuyerEl) filterMyOrdersBuyerEl.addEventListener('input', () =>
 document.getElementById('deleteDateFrom').addEventListener('change', updateDeleteDateInfo);
 document.getElementById('deleteDateTo').addEventListener('change', updateDeleteDateInfo);
 
-setTimeout(() => {
-  document.getElementById('loadingOverlay').style.display = 'none';
-}, 1500);
+const loadingOverlay = document.getElementById('loadingOverlay');
+if (loadingOverlay) loadingOverlay.style.display = 'none';

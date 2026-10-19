@@ -759,3 +759,13 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
     gap: 15px !important;
   }
 }
+
+/* Responsif sentuhan jari untuk daftar pesanan & tombol */
+.order-item:active, 
+.utb-item:active, 
+.buyer-option:active,
+.product-card:active {
+  transform: scale(0.98);
+  opacity: 0.9;
+  transition: transform 0.1s ease;
+}
