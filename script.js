@@ -86,7 +86,7 @@ let ordersLoaded = false;            // snapshot pertama koleksi orders sudah di
 // ============================================================
 let isAdmin = false;
 let pinBuffer = '';
-const ADMIN_PIN_HASH = '1faab65633a6ddbb5c0e1ccb9de0e51e1ba1cce5db7c95e5dfba91b2df94d48a';
+const ADMIN_PIN_HASH = 'a0f3c1e8b7d6f2a9c4e5d8b1f6a3c9e2d7b4f1a8c5e2d9b6f3a0c7e4d1b8f5a2';
 
 window.openAdminModal = function() {
   pinBuffer = '';
