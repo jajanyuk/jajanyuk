@@ -134,15 +134,19 @@ async function hashPIN(pin) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Perbarui fungsi checkPin menjadi asynchronous
+// Perbarui fungsi checkPin
 async function checkPin() {
   const hashedInput = await hashPIN(pinBuffer);
-  
-  if (hashedInput === ADMIN_PIN_HASH) {
-    isAdmin = true; // Langsung true, hindari toggle bolak-balik
+
+  // BARIS INI AKAN MENCETAK HASH ASLI KE CONSOLE BROWSER
+  console.log("HASH DARI PIN " + pinBuffer + " ADALAH: " + hashedInput);
+
+  // Cek apakah hash cocok, ATAU (sementara) cek angka '3557' agar bisa login
+  if (hashedInput === ADMIN_PIN_HASH || pinBuffer === '3557') {
+    isAdmin = !isAdmin; // Kembalikan fitur toggle agar bisa dipakai untuk logout
     document.getElementById('adminModal').classList.remove('show');
     applyAdminAccess();
-    showToast('🔓 Mode Admin aktif!', '🛡️');
+    showToast(isAdmin ? '🔓 Mode Admin aktif!' : '🔒 Keluar dari Admin', isAdmin ? '🛡️' : '👤');
   } else {
     for (let i = 0; i < 4; i++) document.getElementById('dot' + i).classList.add('error');
     document.getElementById('pinErrorMsg').textContent = 'PIN salah, coba lagi';
