@@ -86,7 +86,7 @@ let ordersLoaded = false;            // snapshot pertama koleksi orders sudah di
 // ============================================================
 let isAdmin = false;
 let pinBuffer = '';
-const ADMIN_PIN_HASH = 'a0f3c1e8b7d6f2a9c4e5d8b1f6a3c9e2d7b4f1a8c5e2d9b6f3a0c7e4d1b8f5a2';
+const ADMIN_PIN_HASH = '63138be046191a295af377d36045edaf7f201ca757b93f55864400225f147c19';
 
 window.openAdminModal = function() {
   pinBuffer = '';
@@ -138,11 +138,7 @@ async function hashPIN(pin) {
 async function checkPin() {
   const hashedInput = await hashPIN(pinBuffer);
 
-  // BARIS INI AKAN MENCETAK HASH ASLI KE CONSOLE BROWSER
-  console.log("HASH DARI PIN " + pinBuffer + " ADALAH: " + hashedInput);
-
-  // Cek apakah hash cocok, ATAU (sementara) cek angka '3557' agar bisa login
-  if (hashedInput === ADMIN_PIN_HASH || pinBuffer === '3557') {
+  if (hashedInput === ADMIN_PIN_HASH) {
     isAdmin = !isAdmin; // Kembalikan fitur toggle agar bisa dipakai untuk logout
     document.getElementById('adminModal').classList.remove('show');
     applyAdminAccess();
