@@ -73,7 +73,7 @@ let ringSortMode     = 'asc';
 // UTB state
 let utbUserName = null;
 let utbUserLokasi = null;
-let storeClosed = false;
+let storeClosed = localStorage.getItem('jajanyuk_store_status') === 'true'; 
 let storeStatusListenerStarted = false;
 
 // Pesananku state: tanggal (antrian) mana saja yang boleh dilihat user biasa,
@@ -404,7 +404,11 @@ function startStoreStatusListener() {
   storeStatusListenerStarted = true;
   onSnapshot(doc(db, 'settings', 'storeStatus'), snap => {
     storeClosed = snap.exists() && snap.data().isClosed === true;
-    if (isTabActive('utb')) renderUtb(); // Langsung ubah layar jika tab UTB sedang dibuka
+    
+    // Simpan status terbaru ke memori HP agar kunjungan berikutnya instan
+    localStorage.setItem('jajanyuk_store_status', storeClosed); 
+    
+    if (isTabActive('utb')) renderUtb(); 
   }, err => console.error('Store status listener error:', err));
 }
 window.toggleStoreStatus = async function(checked) {
