@@ -443,6 +443,25 @@
 
     <!-- TAB: UTB -->
     <div class="tab-panel" id="tab-utb">
+    <!-- FITUR BARU: Admin Control untuk Buka/Tutup Toko -->
+          <div id="utbAdminControl" class="card" style="display:none; margin-bottom:14px; background:var(--surface2);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-size:14px; font-weight:800; color:var(--text);">Status Toko JajanYuk</div>
+                <div style="font-size:11px; color:var(--text3); margin-top:2px;">Jika aktif, user biasa akan melihat layar libur</div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="storeClosedToggle" onchange="toggleStoreStatus(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        <div id="utbClosedUI" style="display:none;" class="closed-store-card">
+        <div class="closed-store-icon">😴</div>
+        <div class="closed-store-title">Mohon maaf, JajanYuk Libur</div>
+        <div class="closed-store-sub">Kami sedang beristirahat atau tidak menerima pesanan saat ini.<br>Silakan kembali lagi nanti!</div>
+      </div>  
+
       <div class="card utb-name-card" id="utbNamePrompt" style="display:none">
         <div class="utb-name-icon">♨️</div>
         <div class="utb-name-title">Masukkan Nama Kamu</div>

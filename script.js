@@ -73,6 +73,8 @@ let ringSortMode     = 'asc';
 // UTB state
 let utbUserName = null;
 let utbUserLokasi = null;
+let storeClosed = false;
+let storeStatusListenerStarted = false;
 
 // Pesananku state: tanggal (antrian) mana saja yang boleh dilihat user biasa,
 // diatur oleh admin lewat tab Pesananku. Disimpan di settings/pesanankuVisibility.dates
@@ -397,6 +399,28 @@ function startAntrianListener() {
     if (isTabActive('myorders')) renderMyOrders();
   }, err => console.error('Antrian listener error:', err));
 }
+function startStoreStatusListener() {
+  if (storeStatusListenerStarted) return;
+  storeStatusListenerStarted = true;
+  onSnapshot(doc(db, 'settings', 'storeStatus'), snap => {
+    storeClosed = snap.exists() && snap.data().isClosed === true;
+    if (isTabActive('utb')) renderUtb(); // Langsung ubah layar jika tab UTB sedang dibuka
+  }, err => console.error('Store status listener error:', err));
+}
+window.toggleStoreStatus = async function(checked) {
+  if (!isAdmin) return;
+  setSyncBadge('loading');
+  try {
+    await setDoc(doc(db, 'settings', 'storeStatus'), { isClosed: checked }, { merge: true });
+    showToast(checked ? 'Toko ditutup 😴' : 'Toko dibuka 🏪', checked ? '🚫' : '✅');
+    setSyncBadge('ok');
+  } catch(e) {
+    showToast('Gagal mengubah status toko', '❌');
+    setSyncBadge('err');
+    const toggleEl = document.getElementById('storeClosedToggle');
+    if (toggleEl) toggleEl.checked = !checked; // kembalikan switch jika error
+  }
+};
 
 // ============================================================
 // TAB SWITCHING
@@ -429,7 +453,7 @@ window.switchTab = function(name) {
   if (name === 'ringkasan') { startOrdersListener(); renderSummary(); }
   if (name === 'tagihan')   { startOrdersListener(); renderBuyerList(); }
   if (name === 'deposit')   { startDepositsListener(); startOrdersListener(); renderDeposits(); }
-  if (name === 'utb')       { startAntrianListener(); renderUtb(); }
+  if (name === 'utb')       { startAntrianListener(); startStoreStatusListener(); renderUtb(); }
   if (name === 'myorders')  { startOrdersListener(); startAntrianListener(); startPesanankuSettingsListener(); renderMyOrders(); }
   if (name === 'qris')      renderQris();
 };
@@ -1333,14 +1357,35 @@ function updateUtbOrderBar() {
 }
 
 function renderUtb() {
-  const namePrompt = document.getElementById('utbNamePrompt');
-  const main       = document.getElementById('utbMain');
+  const adminControl = document.getElementById('utbAdminControl');
+  const toggleEl     = document.getElementById('storeClosedToggle');
+  const closedUI     = document.getElementById('utbClosedUI');
+  const namePrompt   = document.getElementById('utbNamePrompt');
+  const main         = document.getElementById('utbMain');
+  const orderBar     = document.getElementById('utbOrderBar');
+  
   if (!namePrompt || !main) return;
 
+  // 1. Tampilkan kontrol khusus Admin (Panel Toggle)
+  if (adminControl) adminControl.style.display = isAdmin ? 'block' : 'none';
+  if (toggleEl) toggleEl.checked = storeClosed;
+
+  // 2. Blokir tampilan jika toko tutup (Hanya memblokir User biasa. Admin tetap bisa masuk)
+  if (storeClosed && !isAdmin) {
+    if (closedUI) closedUI.style.display = 'block';
+    namePrompt.style.display = 'none';
+    main.style.display = 'none';
+    if (orderBar) orderBar.style.display = 'none';
+    return; // Berhenti di sini, jangan tampilkan menu utb
+  } else {
+    if (closedUI) closedUI.style.display = 'none';
+  }
+
+  // 3. Logika bawaan UTB (Jika toko buka atau Admin yang akses)
   if (!utbUserName) {
     namePrompt.style.display = 'block';
     main.style.display = 'none';
-    document.getElementById('utbOrderBar').style.display = 'none';
+    if (orderBar) orderBar.style.display = 'none';
     return;
   }
 
