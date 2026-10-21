@@ -423,6 +423,16 @@
           </div>
         </div>
       </div>
+      <!-- FITUR BARU: REKAP PER ITEM -->
+      <div class="card" style="margin-bottom:14px; background:linear-gradient(135deg, #F5F3FF, #EDE9FE); border-color:#DDD6FE;">
+        <div class="section-title" style="margin-bottom:10px; color:#5B21B6;">📦 Rekap Berdasarkan Item</div>
+        <div style="font-size:11px; color:#7C3AED; margin-bottom:8px;">Pilih menu untuk melihat siapa saja yang memesannya di periode ini:</div>
+        <select class="form-select" id="tagihanItemSelect" onchange="showRekapItem()" style="border-color:#C4B5FD; font-weight:600; color:#4C1D95;">
+          <option value="">-- Pilih Item --</option>
+        </select>
+        <div id="tagihanItemPreview" style="display:none; margin-top:12px"></div>
+      </div>
+      <!-- END FITUR BARU -->
       <div id="unpaidBanner"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div class="section-title" style="margin-bottom:0">🧾 Pilih Pembeli</div>
