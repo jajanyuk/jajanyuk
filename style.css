@@ -806,3 +806,80 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-12px); }
 }
+
+/* ============================================================
+   DARK MODE THEME (ELEGANT DARK GRAY)
+============================================================ */
+/* Efek transisi halus saat berganti tema */
+body, .card, .bottom-nav, .order-item, .utb-item, input, select {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+body.dark-mode {
+  /* Warna Dasar */
+  --bg: #121212;
+  --surface: #1E1E1E;
+  --surface2: #2C2C2C;
+  --text: #F9FAFB;
+  --text2: #D1D5DB;
+  --text3: #9CA3AF;
+  --border: #374151;
+  
+  /* Warna Aksen disesuaikan agar tidak menyilaukan di background gelap */
+  --brand: #A78BFA;
+  --brand-dark: #DDD6FE;
+  --brand-light: #2E1065;
+  
+  --green-dark: #34D399;
+  --green-light: #064E3B;
+  
+  --red: #F87171;
+  --red-light: #7F1D1D;
+  
+  --amber: #FBBF24;
+}
+
+/* Modifikasi elemen spesifik untuk Dark Mode */
+body.dark-mode .card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); /* Bayangan lebih pekat */
+}
+
+body.dark-mode input, 
+body.dark-mode select, 
+body.dark-mode textarea {
+  background-color: #2C2C2C;
+  color: #F9FAFB;
+  border-color: #4B5563;
+}
+
+body.dark-mode input:focus, 
+body.dark-mode select:focus {
+  background-color: #1E1E1E;
+  border-color: var(--brand);
+}
+
+body.dark-mode .bottom-nav {
+  background: rgba(30, 30, 30, 0.95);
+  border-top-color: #374151;
+}
+
+body.dark-mode .closed-store-card {
+  background: linear-gradient(135deg, #431407 0%, #78350F 100%);
+  border-color: #92400E;
+}
+body.dark-mode .closed-store-title { color: #FED7AA; }
+body.dark-mode .closed-store-sub { color: #FDBA74; }
+
+body.dark-mode .empty-state {
+  background: #1E1E1E;
+  border-color: #374151;
+}
+
+body.dark-mode .bill-preview {
+  background: #2C2C2C !important;
+  color: #D1D5DB !important;
+  border-color: #4B5563 !important;
+}
+body.dark-mode .bill-preview pre {
+  color: #D1D5DB !important;
+}
