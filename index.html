@@ -31,14 +31,13 @@
 		<div><p class="sub-text">by Sufi</p></div>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <button id="themeToggle" onclick="toggleTheme()" style="position: fixed; top: 15px; left: 15px; z-index: 9999; background: var(--surface, #FFF); border: 1.5px solid var(--border, #E5E7EB); font-size: 18px; cursor: pointer; padding: 6px 8px; border-radius: 50%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.3s, background 0.3s;" title="Dark mode">🌙</button>
         <div style="display:flex;align-items:center;gap:6px">
-          <div class="header-date" id="headerDate">
-            <button id="themeToggle" onclick="toggleTheme()" style="background:transparent; border:none; font-size:20px; cursor:pointer; padding:4px; margin-left:8px; border-radius:50%; transition:transform 0.2s;" title="Dark Mode">🌙</button>
-          </div>
+          <div class="header-date" id="headerDate"></div>
           <button class="admin-badge is-user" id="adminBadge" onclick="openAdminModal()" title="Login Admin">👤 User</button>
         </div>
-        <div class="sync-badge sync-loading" id="syncBadge">⏳ Menghubungkan</div>
+        <div class="sync-badge sync-loading" id="syncBadge">⏳ Connecting...</div>
       </div>
     </div>
     <div class="nav">
