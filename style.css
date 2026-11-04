@@ -815,71 +815,115 @@ body, .card, .bottom-nav, .order-item, .utb-item, input, select {
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
+/* ============================================================
+   SMOOTH TRANSITION (Animasi halus saat ganti mode)
+   ============================================================ */
+body, .card, .order-item, .antrian-item, .deposit-item, .utb-item, 
+.stat-card, input, select, textarea, .nav-btn, .header, .modal-content, .bill-preview {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+/* ============================================================
+   DARK MODE ELEGANT (Kontras Lembut)
+   ============================================================ */
 body.dark-mode {
-  /* Warna Dasar */
-  --bg: #121212;
-  --surface: #1E1E1E;
-  --surface2: #2C2C2C;
-  --text: #F9FAFB;
-  --text2: #D1D5DB;
-  --text3: #9CA3AF;
-  --border: #374151;
-  
-  /* Warna Aksen disesuaikan agar tidak menyilaukan di background gelap */
-  --brand: #A78BFA;
-  --brand-dark: #DDD6FE;
-  --brand-light: #2E1065;
-  
-  --green-dark: #34D399;
-  --green-light: #064E3B;
-  
-  --red: #F87171;
-  --red-light: #7F1D1D;
-  
-  --amber: #FBBF24;
+  /* Palet Warna Slate (Nyaman di mata) */
+  --bg-main: #0f172a;        /* Background utama (Slate 900) */
+  --bg-card: #1e293b;        /* Background panel/kartu (Slate 800) */
+  --bg-hover: #334155;       /* Efek saat disentuh (Slate 700) */
+  --text-main: #e2e8f0;      /* Teks utama - putih redup */
+  --text-muted: #94a3b8;     /* Teks keterangan - abu-abu lembut */
+  --border-color: #334155;   /* Garis pembatas */
+
+  /* Warna Brand & Status (Dibuat agak redup agar tidak menyilaukan) */
+  --brand: #f97316;          /* Orange kalem */
+  --brand-light: #431407;    /* Orange sangat gelap untuk background badge */
+  --green-dark: #34d399;     /* Hijau lunas kalem */
+  --green-light: #064e3b;    /* Background hijau gelap */
+  --red-soft: #f87171;       /* Merah belum bayar */
+  --red-bg: #450a0a;         /* Background merah gelap */
+
+  background-color: var(--bg-main);
+  color: var(--text-main);
 }
 
-/* Modifikasi elemen spesifik untuk Dark Mode */
-body.dark-mode .card {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); /* Bayangan lebih pekat */
+/* 1. Komponen Kotak (Kartu, Pesanan, Antrian) */
+body.dark-mode .card,
+body.dark-mode .order-item,
+body.dark-mode .antrian-item,
+body.dark-mode .deposit-item,
+body.dark-mode .utb-item,
+body.dark-mode .stat-card,
+body.dark-mode .bill-preview,
+body.dark-mode .header {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-main);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
 }
 
-body.dark-mode input, 
-body.dark-mode select, 
+/* 2. Teks Keterangan & Detail */
+body.dark-mode .order-item-buyer,
+body.dark-mode .order-item-date,
+body.dark-mode .stat-sub,
+body.dark-mode .empty-text,
+body.dark-mode .deposit-date,
+body.dark-mode .utb-item-locked-by,
+body.dark-mode .section-title {
+  color: var(--text-muted) !important;
+}
+
+/* 3. Input, Textarea & Dropdown */
+body.dark-mode input,
+body.dark-mode select,
 body.dark-mode textarea {
-  background-color: #2C2C2C;
-  color: #F9FAFB;
-  border-color: #4B5563;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
 }
-
-body.dark-mode input:focus, 
+body.dark-mode input:focus,
 body.dark-mode select:focus {
-  background-color: #1E1E1E;
   border-color: var(--brand);
+  background-color: var(--bg-card);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
 }
 
-body.dark-mode .bottom-nav {
-  background: rgba(30, 30, 30, 0.95);
-  border-top-color: #374151;
+/* 4. Badge Status (Lunas, Belum Lunas, Deposit) */
+body.dark-mode .badge-unpaid {
+  background-color: var(--red-bg) !important;
+  color: var(--red-soft) !important;
+  border: 1px solid #7f1d1d !important;
+}
+body.dark-mode .badge-paid {
+  background-color: var(--green-light) !important;
+  color: var(--green-dark) !important;
+  border: 1px solid #065f46 !important;
+}
+body.dark-mode .badge-deposit {
+  background-color: var(--brand-light) !important;
+  color: var(--brand) !important;
+  border: 1px solid #7c2d12 !important;
 }
 
-body.dark-mode .closed-store-card {
-  background: linear-gradient(135deg, #431407 0%, #78350F 100%);
-  border-color: #92400E;
+/* 5. Navigasi & Tab */
+body.dark-mode .nav-btn {
+  color: var(--text-muted);
 }
-body.dark-mode .closed-store-title { color: #FED7AA; }
-body.dark-mode .closed-store-sub { color: #FDBA74; }
+body.dark-mode .nav-btn.active {
+  color: var(--brand);
+  background-color: var(--brand-light);
+}
 
+/* 6. Pesan Kosong (Empty State) */
 body.dark-mode .empty-state {
-  background: #1E1E1E;
-  border-color: #374151;
+  background: transparent;
+  border-color: dashed var(--border-color);
 }
 
-body.dark-mode .bill-preview {
-  background: #2C2C2C !important;
-  color: #D1D5DB !important;
-  border-color: #4B5563 !important;
-}
-body.dark-mode .bill-preview pre {
-  color: #D1D5DB !important;
+/* 7. Modal (Popup UTB / Admin) */
+body.dark-mode .modal-content,
+body.dark-mode #utbConflictPopup > div {
+  background-color: var(--bg-card) !important;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
 }
