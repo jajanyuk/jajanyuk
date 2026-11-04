@@ -824,30 +824,40 @@ body, .card, .order-item, .antrian-item, .deposit-item, .utb-item,
 }
 
 /* ============================================================
-   DARK MODE ELEGANT (Kontras Lembut)
+   SMOOTH TRANSITION (Animasi halus untuk semua elemen)
    ============================================================ */
-body.dark-mode {
-  /* Palet Warna Slate (Nyaman di mata) */
-  --bg-main: #0f172a;        /* Background utama (Slate 900) */
-  --bg-card: #1e293b;        /* Background panel/kartu (Slate 800) */
-  --bg-hover: #334155;       /* Efek saat disentuh (Slate 700) */
-  --text-main: #e2e8f0;      /* Teks utama - putih redup */
-  --text-muted: #94a3b8;     /* Teks keterangan - abu-abu lembut */
-  --border-color: #334155;   /* Garis pembatas */
-
-  /* Warna Brand & Status (Dibuat agak redup agar tidak menyilaukan) */
-  --brand: #f97316;          /* Orange kalem */
-  --brand-light: #431407;    /* Orange sangat gelap untuk background badge */
-  --green-dark: #34d399;     /* Hijau lunas kalem */
-  --green-light: #064e3b;    /* Background hijau gelap */
-  --red-soft: #f87171;       /* Merah belum bayar */
-  --red-bg: #450a0a;         /* Background merah gelap */
-
-  background-color: var(--bg-main);
-  color: var(--text-main);
+*, *::before, *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* 1. Komponen Kotak (Kartu, Pesanan, Antrian) */
+/* ============================================================
+   DARK MODE MODERN "ZINC/SLATE"
+   ============================================================ */
+body.dark-mode {
+  /* Palet Warna Modern (Elegan, kontras pas, tidak bikin sakit mata) */
+  --bg-base: #09090b;        /* Background paling luar (sangat gelap/Zinc 950) */
+  --bg-surface: #18181b;     /* Background kartu/panel (Zinc 900) */
+  --bg-surface-hover: #27272a;/* Hover state (Zinc 800) */
+  --text-main: #f4f4f5;      /* Teks utama (putih bersih/Zinc 50) */
+  --text-muted: #a1a1aa;     /* Teks sekunder (abu-abu terang/Zinc 400) */
+  --border-color: #27272a;   /* Garis pembatas */
+  
+  --brand: #f97316;          /* Orange utama JajanYuk */
+  --brand-dim: rgba(249, 115, 22, 0.15); /* Orange transparan */
+  
+  background-color: var(--bg-base) !important;
+  color: var(--text-main) !important;
+}
+
+/* 1. Paksa area putih di luar kartu menjadi gelap (Fix Gambar 2) */
+body.dark-mode #app, 
+body.dark-mode .container, 
+body.dark-mode .main-content,
+body.dark-mode .tab-panel {
+  background-color: var(--bg-base) !important;
+}
+
+/* 2. Kartu, List Item, dan Panel Wrapper */
 body.dark-mode .card,
 body.dark-mode .order-item,
 body.dark-mode .antrian-item,
@@ -855,75 +865,94 @@ body.dark-mode .deposit-item,
 body.dark-mode .utb-item,
 body.dark-mode .stat-card,
 body.dark-mode .bill-preview,
-body.dark-mode .header {
-  background-color: var(--bg-card) !important;
+body.dark-mode .buyer-option,
+body.dark-mode .modal-content,
+/* Tangkap panel yang punya warna inline mencolok di JS (Fix Gambar 1) */
+body.dark-mode div[style*="background:linear-gradient"],
+body.dark-mode div[style*="background: linear-gradient"],
+body.dark-mode div[style*="background:#F3F4F6"] {
+  background: var(--bg-surface) !important;
   border-color: var(--border-color) !important;
-  color: var(--text-main);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0,0,0, 0.4) !important;
 }
 
-/* 2. Teks Keterangan & Detail */
+/* 3. Perbaiki Teks Hitam yang Tidak Terbaca (Fix Gambar 2) */
+body.dark-mode .order-item-name,
 body.dark-mode .order-item-buyer,
+body.dark-mode .buyer-name,
+body.dark-mode .buyer-total,
+body.dark-mode .antrian-item-name,
+body.dark-mode .product-card-name,
+body.dark-mode .section-title,
+body.dark-mode .stat-label,
+body.dark-mode .stat-value,
+body.dark-mode pre,
+body.dark-mode strong,
+body.dark-mode b {
+  color: var(--text-main) !important;
+}
+
+/* Teks keterangan sekunder */
 body.dark-mode .order-item-date,
+body.dark-mode .order-item-details,
 body.dark-mode .stat-sub,
 body.dark-mode .empty-text,
 body.dark-mode .deposit-date,
-body.dark-mode .utb-item-locked-by,
-body.dark-mode .section-title {
+body.dark-mode .utb-item-note {
   color: var(--text-muted) !important;
 }
 
-/* 3. Input, Textarea & Dropdown */
+/* 4. Form Input & Dropdown (Biar menyatu dengan tema) */
 body.dark-mode input,
 body.dark-mode select,
 body.dark-mode textarea {
-  background-color: var(--bg-main);
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
+  background-color: #000000 !important; /* Kolom input lebih gelap dari kartu */
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-color) !important;
 }
 body.dark-mode input:focus,
 body.dark-mode select:focus {
-  border-color: var(--brand);
-  background-color: var(--bg-card);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+  border-color: var(--brand) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px var(--brand-dim) !important;
+}
+body.dark-mode input::placeholder {
+  color: #52525b !important;
 }
 
-/* 4. Badge Status (Lunas, Belum Lunas, Deposit) */
-body.dark-mode .badge-unpaid {
-  background-color: var(--red-bg) !important;
-  color: var(--red-soft) !important;
-  border: 1px solid #7f1d1d !important;
+/* 5. Perbaikan Warna Kotak Pembeli Lunas (Fix Gambar 1 warna hijau terang) */
+body.dark-mode .buyer-option.selected {
+  background-color: var(--bg-surface-hover) !important;
+  border-color: var(--brand) !important;
 }
-body.dark-mode .badge-paid {
-  background-color: var(--green-light) !important;
-  color: var(--green-dark) !important;
-  border: 1px solid #065f46 !important;
+body.dark-mode .buyer-option.all-paid {
+  background-color: rgba(21, 128, 61, 0.15) !important; /* Hijau kalem tembus pandang */
+  border-color: #166534 !important;
 }
-body.dark-mode .badge-deposit {
-  background-color: var(--brand-light) !important;
+
+/* 6. Perbaikan Tombol Filter Tanggal (Hari Ini, Kemarin, dll) */
+body.dark-mode .nav-btn,
+body.dark-mode .btn[style*="background:white"],
+body.dark-mode .shortcut-btn {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border-color) !important;
+}
+body.dark-mode .nav-btn.active,
+body.dark-mode .shortcut-btn.active {
+  background-color: var(--brand) !important;
+  color: #ffffff !important;
+  border-color: var(--brand) !important;
+}
+
+/* 7. Redam teks inline warna-warni dari JavaScript agar tidak sakit mata */
+body.dark-mode [style*="color:var(--red)"],
+body.dark-mode [style*="color:#92400E"] {
+  color: #fca5a5 !important; /* Ubah merah terang jadi merah pastel */
+}
+body.dark-mode [style*="color:#15803D"] {
+  color: #86efac !important; /* Ubah hijau terang jadi hijau pastel */
+}
+body.dark-mode [style*="color:var(--brand-dark)"] {
   color: var(--brand) !important;
-  border: 1px solid #7c2d12 !important;
-}
-
-/* 5. Navigasi & Tab */
-body.dark-mode .nav-btn {
-  color: var(--text-muted);
-}
-body.dark-mode .nav-btn.active {
-  color: var(--brand);
-  background-color: var(--brand-light);
-}
-
-/* 6. Pesan Kosong (Empty State) */
-body.dark-mode .empty-state {
-  background: transparent;
-  border-color: dashed var(--border-color);
-}
-
-/* 7. Modal (Popup UTB / Admin) */
-body.dark-mode .modal-content,
-body.dark-mode #utbConflictPopup > div {
-  background-color: var(--bg-card) !important;
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
 }
