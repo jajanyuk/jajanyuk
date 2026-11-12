@@ -156,3 +156,76 @@ window.copyRekapUtb = async function() {
     }
   };
 })();
+
+// ============================================================
+// UI SMOOTHNESS
+// 1) Pindah tab: halaman kembali ke atas (tidak tertinggal di tengah tab lama)
+// 2) Semua action async: cegah double-klik/double-tap + tanda "sedang diproses"
+// 3) Ganti tema: warna memudar bersamaan
+// ============================================================
+(function () {
+  const prevSwitchTab = window.switchTab;
+  window.switchTab = function (name) {
+    const cur = document.querySelector('.tab-panel.active');
+    const changed = !cur || cur.id !== 'tab-' + name;
+    prevSwitchTab.apply(this, arguments);
+    const next = document.getElementById('tab-' + name);
+    if (changed && next && next.classList.contains('active') && window.scrollY > 0) {
+      window.scrollTo(0, 0);
+    }
+  };
+
+  const ACTIONS = [
+    'toggleStoreStatus', 'deleteOrdersByDate', 'addOrder', 'deleteOrder', 'togglePaid',
+    'submitBulk', 'addAntrian', 'submitAntrianBulk', 'sendAntrianToOrder', 'deleteAntrian',
+    'clearSentAntrian', 'utbChangeName', 'toggleUtbItem', 'submitUtbOrder', 'deleteMyOrder',
+    'togglePesanankuDate', 'setAllPesanankuVisibility', 'deletePesanankuByDate', 'addDeposit',
+    'deleteDeposit', 'changeQris', 'saveProduct', 'deleteProductFromDetail', 'copyRekapUtb'
+  ];
+  const ROW_SELECTOR = '.order-item, .antrian-item, .deposit-item, .utb-item';
+  const inFlight = new Set();
+
+  ACTIONS.forEach(function (fnName) {
+    const fn = window[fnName];
+    if (typeof fn !== 'function') return;
+    window[fnName] = function () {
+      const args = arguments;
+      const key = fnName + '|' + (typeof args[0] === 'string' ? args[0] : '');
+      if (inFlight.has(key)) return Promise.resolve(); // klik kedua saat masih proses -> diabaikan
+      inFlight.add(key);
+
+      const ev = window.event;
+      const target = ev && ev.target && ev.target.closest ? ev.target : null;
+      let ctrl = target ? target.closest('button, input, select, label') : null;
+      if (ctrl && ctrl.tagName === 'LABEL') ctrl = ctrl.querySelector('input');
+      const row = target ? target.closest(ROW_SELECTOR) : null;
+      const wasDisabled = ctrl ? ctrl.disabled : false;
+
+      // Tanda proses baru muncul jika aksi > 120ms (tidak berkedip untuk aksi cepat / confirm dibatalkan)
+      const timer = setTimeout(function () {
+        if (ctrl && !wasDisabled && ctrl.isConnected) { ctrl.disabled = true; ctrl.classList.add('is-busy'); }
+        if (row && row.isConnected) row.classList.add('is-busy');
+      }, 120);
+
+      let p;
+      try { p = Promise.resolve(fn.apply(this, args)); } catch (e) { p = Promise.reject(e); }
+      return p.finally(function () {
+        clearTimeout(timer);
+        inFlight.delete(key);
+        if (ctrl && ctrl.classList.contains('is-busy')) { ctrl.classList.remove('is-busy'); ctrl.disabled = wasDisabled; }
+        if (row) row.classList.remove('is-busy');
+      });
+    };
+  });
+
+  let themeTimer = null;
+  let lastDark = document.body.classList.contains('dark-mode');
+  new MutationObserver(function () {
+    const dark = document.body.classList.contains('dark-mode');
+    if (dark === lastDark) return;
+    lastDark = dark;
+    document.documentElement.classList.add('theme-switching');
+    clearTimeout(themeTimer);
+    themeTimer = setTimeout(function () { document.documentElement.classList.remove('theme-switching'); }, 400);
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+})();
