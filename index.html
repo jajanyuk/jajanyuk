@@ -6,7 +6,7 @@
 <title>JajanYuk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261111-2">
+<link rel="stylesheet" href="style.css?v=20261112-1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 </head>
 <body>
@@ -52,6 +52,7 @@
       <button class="nav-btn locked" id="navDeposit" onclick="switchTab('deposit')"><span class="nav-icon">💰</span>Deposit</button>
       <button class="nav-btn locked" id="navRingkasan" onclick="switchTab('ringkasan')"><span class="nav-icon">📊</span>Ringkasan</button>
       <button class="nav-btn locked" id="navTagihan" onclick="switchTab('tagihan')"><span class="nav-icon">🧾</span>Tagihan</button>
+      <button class="nav-btn locked" id="navRekapUtb" onclick="switchTab('rekaputb')"><span class="nav-icon">🗂️</span>Rekap UTB</button>
     </div>
   </div>
 
@@ -539,6 +540,21 @@
       <div class="orders-list" id="myOrdersList"></div>
     </div>
 
+    <!-- TAB: REKAP UTB (khusus admin) — item yang sudah dipesan, per item + nama pembeli -->
+    <div class="tab-panel" id="tab-rekaputb">
+      <div class="card">
+        <div class="section-title" style="margin-bottom:4px">🗂️ Rekap UTB per Item</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px" id="rekapUtbSummary"></div>
+        <div class="filter-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <input type="date" class="filter-input" id="rekapUtbDate" onchange="setRekapUtbDate(this.value)" style="flex:1;min-width:140px">
+          <button class="btn btn-sm btn-ghost" onclick="shiftRekapUtbDate(0)">Hari ini</button>
+          <button class="btn btn-sm btn-ghost" onclick="shiftRekapUtbDate(1)">Besok</button>
+          <button class="btn btn-sm btn-primary" onclick="copyRekapUtb()">📋 Salin</button>
+        </div>
+      </div>
+      <div class="rekap-utb-grid" id="rekapUtbList"></div>
+    </div>
+
     <!-- TAB: QRIS -->
     <div class="tab-panel" id="tab-qris">
       <div id="qrisUploadCard" style="display:none"></div>
@@ -553,6 +569,8 @@
         </div>
       </div>
     </div>
+
+    <div class="app-footer">Powered by JajanYuk © 2024</div>
 
   </div>
 
@@ -647,7 +665,7 @@
 <!-- ============================================================
      FIREBASE + APP LOGIC (external module file)
 ============================================================ -->
-<script type="module" src="script.js?v=20261111-2"></script>
+<script type="module" src="script.js?v=20261112-1"></script>
 
 </body>
 </html>
