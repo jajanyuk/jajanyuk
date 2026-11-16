@@ -833,132 +833,6 @@ body.dark-mode .app-footer { color:var(--text-muted); }
 /* (Transisi tema dipindah ke blok "UI SMOOTHNESS" di akhir file) */
 
 /* ============================================================
-   DARK MODE MODERN "ZINC/SLATE"
-   ============================================================ */
-body.dark-mode {
-  /* Palet Warna Modern (Elegan, kontras pas, tidak bikin sakit mata) */
-  --bg-base: #09090b;        /* Background paling luar (sangat gelap/Zinc 950) */
-  --bg-surface: #18181b;     /* Background kartu/panel (Zinc 900) */
-  --bg-surface-hover: #27272a;/* Hover state (Zinc 800) */
-  --text-main: #f4f4f5;      /* Teks utama (putih bersih/Zinc 50) */
-  --text-muted: #a1a1aa;     /* Teks sekunder (abu-abu terang/Zinc 400) */
-  --border-color: #27272a;   /* Garis pembatas */
-  
-  --brand: #f97316;          /* Orange utama JajanYuk */
-  --brand-dim: rgba(249, 115, 22, 0.15); /* Orange transparan */
-  
-  background-color: var(--bg-base) !important;
-  color: var(--text-main) !important;
-}
-
-/* 1. Paksa area putih di luar kartu menjadi gelap (Fix Gambar 2) */
-body.dark-mode #app, 
-body.dark-mode .container, 
-body.dark-mode .main-content,
-body.dark-mode .tab-panel {
-  background-color: var(--bg-base) !important;
-}
-
-/* 2. Kartu, List Item, dan Panel Wrapper */
-body.dark-mode .card,
-body.dark-mode .order-item,
-body.dark-mode .antrian-item,
-body.dark-mode .deposit-item,
-body.dark-mode .utb-item,
-body.dark-mode .stat-card,
-body.dark-mode .bill-preview,
-body.dark-mode .buyer-option,
-body.dark-mode .modal-content,
-/* Tangkap panel yang punya warna inline mencolok di JS (Fix Gambar 1) */
-body.dark-mode div[style*="background:linear-gradient"],
-body.dark-mode div[style*="background: linear-gradient"],
-body.dark-mode div[style*="background:#F3F4F6"] {
-  background: var(--bg-surface) !important;
-  border-color: var(--border-color) !important;
-  box-shadow: 0 4px 12px rgba(0,0,0, 0.4) !important;
-}
-
-/* 3. Perbaiki Teks Hitam yang Tidak Terbaca (Fix Gambar 2) */
-body.dark-mode .order-item-name,
-body.dark-mode .order-item-buyer,
-body.dark-mode .buyer-name,
-body.dark-mode .buyer-total,
-body.dark-mode .antrian-item-name,
-body.dark-mode .product-card-name,
-body.dark-mode .section-title,
-body.dark-mode .stat-label,
-body.dark-mode .stat-value,
-body.dark-mode pre,
-body.dark-mode strong,
-body.dark-mode b {
-  color: var(--text-main) !important;
-}
-
-/* Teks keterangan sekunder */
-body.dark-mode .order-item-date,
-body.dark-mode .order-item-details,
-body.dark-mode .stat-sub,
-body.dark-mode .empty-text,
-body.dark-mode .deposit-date,
-body.dark-mode .utb-item-note {
-  color: var(--text-muted) !important;
-}
-
-/* 4. Form Input & Dropdown (Biar menyatu dengan tema) */
-body.dark-mode input,
-body.dark-mode select,
-body.dark-mode textarea {
-  background-color: #000000 !important; /* Kolom input lebih gelap dari kartu */
-  color: var(--text-main) !important;
-  border: 1px solid var(--border-color) !important;
-}
-body.dark-mode input:focus,
-body.dark-mode select:focus {
-  border-color: var(--brand) !important;
-  outline: none !important;
-  box-shadow: 0 0 0 3px var(--brand-dim) !important;
-}
-body.dark-mode input::placeholder {
-  color: #52525b !important;
-}
-
-/* 5. Perbaikan Warna Kotak Pembeli Lunas (Fix Gambar 1 warna hijau terang) */
-body.dark-mode .buyer-option.selected {
-  background-color: var(--bg-surface-hover) !important;
-  border-color: var(--brand) !important;
-}
-body.dark-mode .buyer-option.all-paid {
-  background-color: rgba(21, 128, 61, 0.15) !important; /* Hijau kalem tembus pandang */
-  border-color: #166534 !important;
-}
-
-/* 6. Perbaikan Tombol Filter Tanggal (Hari Ini, Kemarin, dll) */
-body.dark-mode .nav-btn,
-body.dark-mode .btn[style*="background:white"],
-body.dark-mode .shortcut-btn {
-  background-color: var(--bg-surface) !important;
-  color: var(--text-muted) !important;
-  border-color: var(--border-color) !important;
-}
-body.dark-mode .nav-btn.active,
-body.dark-mode .shortcut-btn.active {
-  background-color: var(--brand) !important;
-  color: #ffffff !important;
-  border-color: var(--brand) !important;
-}
-
-/* 7. Redam teks inline warna-warni dari JavaScript agar tidak sakit mata */
-body.dark-mode [style*="color:var(--red)"],
-body.dark-mode [style*="color:#92400E"] {
-  color: #fca5a5 !important; /* Ubah merah terang jadi merah pastel */
-}
-body.dark-mode [style*="color:#15803D"] {
-  color: #86efac !important; /* Ubah hijau terang jadi hijau pastel */
-}
-body.dark-mode [style*="color:var(--brand-dark)"] {
-  color: var(--brand) !important;
-}
-/* ============================================================
    DESKTOP FULL-WIDTH LAYOUT (>= 900px)
    Aplikasi memenuhi lebar browser; konten dibatasi 1200px agar tetap nyaman dibaca.
 ============================================================ */
@@ -1088,3 +962,187 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* ============================================================
+   DARK MODE — 3 WARNA
+   Hitam soft (latar) · Kuning (aksen/judul/harga) · Putih (teks)
+   Header & komponen: abu-abu (lebih terang dari latar)
+============================================================ */
+body.dark-mode {
+  --dk-bg: #141414;
+  --dk-header: #3A3A3E;
+  --dk-gray: #2B2B2F;
+  --dk-gray-2: #36363B;
+  --dk-line: #4A4A50;
+  --dk-yellow: #FACC15;
+  --dk-yellow-soft: rgba(250, 204, 21, 0.14);
+  --dk-white: #F4F4F5;
+  --dk-white-2: #C9C9CE;
+  --dk-white-3: #9D9DA3;
+
+  /* Petakan semua variabel tema lama ke 3 warna */
+  --brand: var(--dk-yellow); --brand-light: var(--dk-yellow-soft); --brand-dark: var(--dk-yellow);
+  --green: var(--dk-yellow); --green-light: var(--dk-yellow-soft); --green-dark: var(--dk-yellow);
+  --amber: var(--dk-yellow); --amber-light: var(--dk-gray-2);
+  --blue: var(--dk-white);   --blue-light: var(--dk-gray);
+  --red: var(--dk-white);    --red-light: var(--dk-gray);
+  --purple: var(--dk-white); --purple-light: var(--dk-gray);
+  --bg: var(--dk-bg); --surface: var(--dk-gray); --surface2: var(--dk-gray-2); --border: var(--dk-line);
+  --text: var(--dk-white); --text2: var(--dk-white-2); --text3: var(--dk-white-3);
+  --shadow: 0 2px 10px rgba(0,0,0,0.35); --shadow-lg: 0 12px 36px rgba(0,0,0,0.55);
+  /* variabel lama yang masih dipakai beberapa komponen */
+  --bg-base: var(--dk-bg); --bg-surface: var(--dk-gray); --bg-surface-hover: var(--dk-gray-2);
+  --text-main: var(--dk-white); --text-muted: var(--dk-white-2); --border-color: var(--dk-line);
+  --brand-dim: var(--dk-yellow-soft);
+
+  background: var(--dk-bg) !important;
+  color: var(--dk-white);
+  color-scheme: dark;
+}
+body.dark-mode .app { background: var(--dk-bg); box-shadow: none; border-color: var(--dk-line); }
+body.dark-mode .tab-panel { background: transparent; }
+
+/* ---------- Header ---------- */
+body.dark-mode .header {
+  background: var(--dk-header) !important;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-bottom: 1px solid var(--dk-line);
+}
+body.dark-mode .logo-text { color: var(--dk-yellow); }
+body.dark-mode .sub-text, body.dark-mode .logo-sub { color: var(--dk-white-2); }
+body.dark-mode .logo-icon { background: var(--dk-gray-2); }
+body.dark-mode .header-date { background: var(--dk-gray-2); color: var(--dk-white); }
+body.dark-mode .sync-ok, body.dark-mode .sync-loading, body.dark-mode .sync-err { background: var(--dk-gray-2); }
+body.dark-mode .sync-ok { color: var(--dk-yellow); }
+body.dark-mode .sync-loading { color: var(--dk-white-2); }
+body.dark-mode .sync-err { color: var(--dk-white); }
+body.dark-mode .admin-badge.is-admin { background: var(--dk-yellow); color: var(--dk-bg); border-color: var(--dk-yellow); }
+body.dark-mode .admin-badge.is-user { background: var(--dk-gray-2); color: var(--dk-white); }
+body.dark-mode .nav { background: var(--dk-gray); }
+body.dark-mode .nav-btn { background: transparent; color: var(--dk-white-2); }
+body.dark-mode .nav-btn:not(.active):hover { background: var(--dk-gray-2); color: var(--dk-white); }
+body.dark-mode .nav-btn.active { background: var(--dk-yellow); color: var(--dk-bg); box-shadow: none; }
+
+/* ---------- Kartu & item ---------- */
+body.dark-mode .card, body.dark-mode .order-item, body.dark-mode .antrian-item,
+body.dark-mode .deposit-item, body.dark-mode .utb-item, body.dark-mode .stat-card,
+body.dark-mode .bill-preview, body.dark-mode .buyer-option, body.dark-mode .product-card,
+body.dark-mode .rekap-utb-card, body.dark-mode .bulk-row, body.dark-mode .delete-date-card,
+body.dark-mode .home-hero, body.dark-mode .running-text-container, body.dark-mode .closed-store-card {
+  background: var(--dk-gray) !important;
+  border-color: var(--dk-line) !important;
+  color: var(--dk-white);
+  box-shadow: none;
+}
+body.dark-mode .card:hover, body.dark-mode .order-item:hover, body.dark-mode .utb-item:hover,
+body.dark-mode .product-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.45); }
+body.dark-mode .section-title, body.dark-mode .rekap-utb-item, body.dark-mode .closed-store-title,
+body.dark-mode h1, body.dark-mode h2, body.dark-mode h3 { color: var(--dk-yellow) !important; }
+body.dark-mode .section-title span { color: var(--dk-white-2) !important; }
+body.dark-mode .closed-store-sub, body.dark-mode .running-text-container * { color: var(--dk-white) !important; }
+body.dark-mode strong, body.dark-mode b, body.dark-mode pre { color: var(--dk-white) !important; }
+
+/* Status lunas / terpilih: aksen kuning (bukan hijau) */
+body.dark-mode .order-item.paid, body.dark-mode .buyer-option.all-paid, body.dark-mode .summary-buyer-row.all-paid,
+body.dark-mode .utb-item.checked, body.dark-mode .bulk-row.valid, body.dark-mode .buyer-option.selected {
+  background: var(--dk-gray-2) !important;
+  border-color: var(--dk-yellow) !important;
+  box-shadow: inset 3px 0 0 var(--dk-yellow) !important;
+}
+body.dark-mode .order-item.paid::before { display: none; }
+body.dark-mode .order-item.paid .order-item-name, body.dark-mode .order-item.paid .order-item-price { color: var(--dk-yellow); }
+body.dark-mode .bulk-row.invalid, body.dark-mode .order-item.pending-delete,
+body.dark-mode .deposit-item.depleted, body.dark-mode .deposit-item.partial, body.dark-mode .deposit-item.full {
+  background: var(--dk-gray) !important; border-color: var(--dk-line) !important;
+}
+body.dark-mode .bulk-row.invalid { border-style: dashed !important; border-color: var(--dk-white-3) !important; }
+body.dark-mode .deposit-amount.orange { color: var(--dk-yellow); }
+body.dark-mode .deposit-balance-bar { background: var(--dk-line); }
+body.dark-mode .deposit-balance-fill, body.dark-mode .deposit-balance-fill.orange,
+body.dark-mode .deposit-balance-fill.red { background: var(--dk-yellow); }
+
+/* ---------- Badge ---------- */
+body.dark-mode .badge, body.dark-mode .badge-deposit, body.dark-mode .badge-deposit-used,
+body.dark-mode .badge[style*="#EFF6FF" i] {
+  background: var(--dk-gray-2) !important; color: var(--dk-white) !important;
+  border: 1px solid var(--dk-line) !important; box-shadow: none !important;
+}
+body.dark-mode .badge-paid { background: var(--dk-yellow) !important; color: var(--dk-bg) !important; border-color: var(--dk-yellow) !important; }
+body.dark-mode .badge-unpaid { background: transparent !important; color: var(--dk-white) !important; border-color: var(--dk-white-3) !important; }
+body.dark-mode .rekap-utb-count, body.dark-mode .active-filter-badge { background: var(--dk-yellow-soft); color: var(--dk-yellow); border-color: var(--dk-yellow); }
+body.dark-mode .rekap-utb-head { border-color: var(--dk-line); }
+body.dark-mode .rekap-utb-buyers li { color: var(--dk-white); }
+body.dark-mode .product-badge.habis { background: var(--dk-white); color: var(--dk-bg); }
+
+/* ---------- Tombol ---------- */
+body.dark-mode .btn-primary, body.dark-mode .buyer-avatar,
+body.dark-mode [style*="background:var(--brand)" i] {
+  background: var(--dk-yellow) !important; color: var(--dk-bg) !important; border-color: var(--dk-yellow) !important;
+}
+body.dark-mode .buyer-option.all-paid .buyer-avatar { background: var(--dk-yellow) !important; color: var(--dk-bg) !important; }
+body.dark-mode .btn-ghost, body.dark-mode .sort-btn, body.dark-mode .date-shortcut, body.dark-mode .period-tab {
+  background: var(--dk-gray-2); color: var(--dk-white); border-color: var(--dk-line);
+}
+body.dark-mode .sort-btn:hover, body.dark-mode .sort-btn.active, body.dark-mode .date-shortcut.active,
+body.dark-mode .date-shortcut:hover { background: var(--dk-yellow-soft); color: var(--dk-yellow); border-color: var(--dk-yellow); }
+body.dark-mode .period-tab.active { background: var(--dk-yellow); color: var(--dk-bg); }
+body.dark-mode .btn-danger, body.dark-mode .delete-date-card .btn-danger, body.dark-mode .btn-warning,
+body.dark-mode .antrian-del-btn {
+  background: var(--dk-gray-2) !important; color: var(--dk-white) !important; border: 1px solid var(--dk-white-3) !important;
+}
+body.dark-mode .btn-danger:hover, body.dark-mode .delete-date-card .btn-danger:hover, body.dark-mode .antrian-del-btn:hover {
+  background: var(--dk-white) !important; color: var(--dk-bg) !important;
+}
+body.dark-mode .btn-success, body.dark-mode .antrian-send-btn { background: var(--dk-yellow-soft); color: var(--dk-yellow); border: 1px solid var(--dk-yellow); }
+body.dark-mode .antrian-send-btn:hover, body.dark-mode .nominal-chip:hover { background: var(--dk-yellow); color: var(--dk-bg); }
+body.dark-mode .nominal-chip { background: var(--dk-gray-2); color: var(--dk-yellow); border-color: var(--dk-yellow); }
+body.dark-mode .pin-key { background: var(--dk-gray-2); color: var(--dk-white); border-color: var(--dk-line); }
+body.dark-mode .pin-dot.error { background: var(--dk-white); border-color: var(--dk-white); }
+
+/* ---------- Form ---------- */
+body.dark-mode input, body.dark-mode select, body.dark-mode textarea,
+body.dark-mode .form-input, body.dark-mode .form-select, body.dark-mode .date-filter-input, body.dark-mode .antrian-buyer-input {
+  background: var(--dk-gray-2) !important; color: var(--dk-white) !important; border-color: var(--dk-line) !important;
+}
+body.dark-mode input:focus, body.dark-mode select:focus, body.dark-mode textarea:focus {
+  border-color: var(--dk-yellow) !important; box-shadow: 0 0 0 3px var(--dk-yellow-soft) !important; outline: none;
+}
+body.dark-mode input::placeholder, body.dark-mode textarea::placeholder { color: var(--dk-white-3) !important; }
+body.dark-mode .form-label { color: var(--dk-white-2); }
+body.dark-mode .switch .slider { background-color: var(--dk-line); }
+body.dark-mode .switch input:checked + .slider { background-color: var(--dk-yellow); }
+body.dark-mode .switch input:checked + .slider::before { background-color: var(--dk-bg); }
+body.dark-mode .custom-check { background-color: var(--dk-gray-2); border-color: var(--dk-white-3); }
+body.dark-mode .utb-checkbox-wrap input:checked ~ .custom-check { background-color: var(--dk-yellow); border-color: var(--dk-yellow); }
+body.dark-mode .utb-checkbox-wrap input:checked ~ .custom-check:after { border-color: var(--dk-bg); }
+body.dark-mode .qris-upload-zone, body.dark-mode .product-form-upload { background: var(--dk-gray-2); border-color: var(--dk-line); }
+
+/* ---------- Modal, toast, footer ---------- */
+body.dark-mode .admin-modal-box, body.dark-mode .utb-confirm-box, body.dark-mode .product-detail-box {
+  background: var(--dk-gray) !important; color: var(--dk-white); border: 1px solid var(--dk-line);
+}
+body.dark-mode .toast { background: var(--dk-white); color: var(--dk-bg); }
+body.dark-mode .app-footer { color: var(--dk-white-3); }
+body.dark-mode .bar { background: var(--dk-line); }
+body.dark-mode .bar.current { background: var(--dk-yellow); }
+
+/* ---------- Warna inline dari script / HTML ---------- */
+body.dark-mode [style*="background:#fff" i], body.dark-mode [style*="background: #fff" i],
+body.dark-mode [style*="background:white" i], body.dark-mode [style*="background: white" i],
+body.dark-mode [style*="background:#F3F4F6" i], body.dark-mode [style*="background:#FFF7ED" i],
+body.dark-mode [style*="background:#EFF6FF" i], body.dark-mode [style*="linear-gradient" i] {
+  background: var(--dk-gray) !important; border-color: var(--dk-line) !important; color: var(--dk-white);
+}
+body.dark-mode [style*="background:#BBF7D0" i] { background: var(--dk-yellow) !important; color: var(--dk-bg) !important; }
+body.dark-mode [style*="background:#92400E" i], body.dark-mode [style*="background:#6D28D9" i] {
+  background: var(--dk-yellow) !important; color: var(--dk-bg) !important; border-color: var(--dk-yellow) !important;
+}
+body.dark-mode [style*="color:#92400E" i], body.dark-mode [style*="color:#15803D" i],
+body.dark-mode [style*="color:#5B21B6" i], body.dark-mode [style*="color:#7C3AED" i],
+body.dark-mode [style*="color:#4C1D95" i], body.dark-mode [style*="color:#1D4ED8" i] { color: var(--dk-yellow) !important; }
+body.dark-mode [style*="background:#BBF7D0" i][style*="color:#15803D" i] { color: var(--dk-bg) !important; }
+body.dark-mode [style*="color:#1F2937" i], body.dark-mode [style*="color:#888" i],
+body.dark-mode [style*="color:#666" i] { color: var(--dk-white-2) !important; }
+body.dark-mode [style*="border-color:#DDD6FE" i], body.dark-mode [style*="border-color:#C4B5FD" i],
+body.dark-mode [style*="border:1.5px solid #ddd" i] { border-color: var(--dk-line) !important; }
+body.dark-mode #themeToggle { background: var(--dk-gray-2) !important; }
