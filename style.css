@@ -1150,3 +1150,7 @@ body.dark-mode #themeToggle { background: var(--dk-gray-2) !important; }
 /* UTB: hitung mundur pilihan item (dilepas otomatis setelah 5 menit) */
 .utb-claim-timer { font-size: 11px; font-weight: 700; color: var(--brand-dark); margin-top: 3px; font-variant-numeric: tabular-nums; }
 .utb-claim-timer.urgent { color: var(--red); animation: pulseText 1.2s ease-in-out infinite; }
+
+/* UTB: catatan batas waktu pilihan item */
+.utb-ttl-note { font-size: 12px; font-weight: 600; color: var(--text2); background: var(--surface2, rgba(0,0,0,.04)); border-left: 3px solid var(--brand); border-radius: 8px; padding: 8px 12px; margin: -4px 0 12px; }
+body.dark-mode .utb-ttl-note { background: var(--dk-gray) !important; color: var(--dk-yellow) !important; border-left-color: var(--dk-yellow) !important; }
