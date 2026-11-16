@@ -229,3 +229,163 @@ window.copyRekapUtb = async function() {
     themeTimer = setTimeout(function () { document.documentElement.classList.remove('theme-switching'); }, 400);
   }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 })();
+
+// ============================================================
+// UTB: PILIHAN ITEM KEDALUWARSA OTOMATIS (5 MENIT)
+// Item yang sudah dicentang tapi tidak disubmit dalam 5 menit otomatis ter-uncheck
+// dan bisa dipilih pembeli lain. Server (worker) tetap jadi penentu akhir.
+// ============================================================
+(function () {
+  const TTL = 5 * 60 * 1000;
+  const localClaimAt = new Map();   // id -> jam HP saat aku mencentang (akurat walau jam HP meleset)
+  const handledExpiry = new Set();  // id|claimedAt yang sudah diproses, agar toast/lepas tidak berulang
+  let clockOffset = 0;              // perkiraan selisih jam server - jam HP
+  try { clockOffset = Number(localStorage.getItem('jajanyuk_clock_offset')) || 0; } catch (_) {}
+
+  const isMine = a => !!utbUserName && a.claimedBy === utbUserName;
+
+  // Waktu kedaluwarsa (jam HP) atau null jika tidak ada batas waktu yang diketahui
+  function expiresAt(a) {
+    if (!a || a.sent || !a.claimedBy) return null;
+    if (isMine(a) && localClaimAt.has(a.firestoreId)) return localClaimAt.get(a.firestoreId) + TTL;
+    if (!a.claimedAt) return null; // data lama sebelum fitur ini: biarkan server yang menentukan
+    return Number(a.claimedAt) - clockOffset + TTL;
+  }
+
+  // Pelajari selisih jam dari klaimku sendiri (claimedAt = jam server saat klaim diproses)
+  function calibrate(list) {
+    list.forEach(a => {
+      if (!isMine(a) || !a.claimedAt || !localClaimAt.has(a.firestoreId)) return;
+      const off = Number(a.claimedAt) - localClaimAt.get(a.firestoreId);
+      if (Math.abs(off - clockOffset) > 1500) {
+        clockOffset = off;
+        try { localStorage.setItem('jajanyuk_clock_offset', String(off)); } catch (_) {}
+      }
+      // Sinkronkan timer lokal dengan klaim versi server (mis. setelah centang ulang)
+      localClaimAt.set(a.firestoreId, Number(a.claimedAt) - clockOffset);
+    });
+  }
+
+  // Lepas klaim yang sudah lewat 5 menit di data lokal. Return true jika ada yang berubah.
+  function expireClaims(list) {
+    const now = Date.now();
+    const mineExpired = [];
+    let changed = false;
+    list.forEach(a => {
+      const exp = expiresAt(a);
+      if (exp === null || now < exp) return;
+      const key = a.firestoreId + '|' + (a.claimedAt || localClaimAt.get(a.firestoreId) || '');
+      if (isMine(a) && !handledExpiry.has(key)) mineExpired.push(a);
+      handledExpiry.add(key);
+      a.claimedBy = null; a.claimedByLokasi = null; a.claimedAt = null;
+      localClaimAt.delete(a.firestoreId);
+      changed = true;
+    });
+    if (mineExpired.length) {
+      // Lepas juga di server supaya langsung bebas untuk pembeli lain (best effort)
+      mineExpired.forEach(a => {
+        callApi('/api/utb/claim', { id: a.firestoreId, name: utbUserName, lokasi: utbUserLokasi, claim: false }).catch(() => {});
+      });
+      const names = mineExpired.map(a => a.item).slice(0, 3).join(', ') + (mineExpired.length > 3 ? ', …' : '');
+      showToast('Pilihan dilepas (5 menit belum dikirim): ' + names, '⏱️');
+    }
+    return changed;
+  }
+
+  function fmt(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  // Tambahkan hitung mundur di item UTB yang sedang dipegang (punyaku / orang lain)
+  function decorateUtbTimers() {
+    const list = document.getElementById('tab-utb');
+    if (!list) return;
+    list.querySelectorAll('.utb-item').forEach(row => {
+      const input = row.querySelector('input[type="checkbox"]');
+      const m = input && /toggleUtbItem\(\s*'([^']+)'/.exec(input.getAttribute('onchange') || '');
+      if (!m) return;
+      const a = antrian.find(x => x.firestoreId === m[1]);
+      const exp = expiresAt(a);
+      let el = row.querySelector('.utb-claim-timer');
+      if (exp === null) { if (el) el.remove(); return; }
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'utb-claim-timer';
+        (row.querySelector('.utb-item-info') || row).appendChild(el);
+      }
+      el.dataset.exp = String(exp);
+      el.dataset.mine = isMine(a) ? '1' : '';
+    });
+    updateTimerTexts();
+  }
+
+  function updateTimerTexts() {
+    const now = Date.now();
+    document.querySelectorAll('#tab-utb .utb-claim-timer').forEach(el => {
+      const left = Number(el.dataset.exp) - now;
+      el.textContent = el.dataset.mine
+        ? '⏱️ Kirim pesanan dalam ' + fmt(left) + ' atau pilihan dilepas'
+        : '⏱️ Tersedia lagi dalam ' + fmt(left);
+      el.classList.toggle('urgent', !!el.dataset.mine && left <= 60000);
+    });
+  }
+
+  // --- Sisipkan ke fungsi yang sudah ada (pemanggilan internal ikut memakai versi baru) ---
+  const origDetect = detectUtbConflicts;
+  detectUtbConflicts = function (prev, next) {
+    calibrate(next);
+    expireClaims(next);
+    return origDetect.apply(this, arguments);
+  };
+
+  const origRenderUtb = renderUtb;
+  renderUtb = function () {
+    expireClaims(antrian);
+    const r = origRenderUtb.apply(this, arguments);
+    decorateUtbTimers();
+    return r;
+  };
+  window.renderUtb = renderUtb;
+
+  const origRenderAntrian = renderAntrian;
+  renderAntrian = function () {
+    expireClaims(antrian);
+    return origRenderAntrian.apply(this, arguments);
+  };
+  window.renderAntrian = renderAntrian;
+
+  const origOrderBar = updateUtbOrderBar;
+  updateUtbOrderBar = function () {
+    expireClaims(antrian);
+    return origOrderBar.apply(this, arguments);
+  };
+
+  const origToggle = window.toggleUtbItem;
+  window.toggleUtbItem = function (id, isChecked) {
+    const startedAt = Date.now();
+    return Promise.resolve(origToggle.apply(this, arguments)).then(r => {
+      const a = antrian.find(x => x.firestoreId === id);
+      if (isChecked && a && isMine(a)) {
+        localClaimAt.set(id, startedAt);
+        if (!a.claimedAt) a.claimedAt = startedAt + clockOffset;
+      } else if (!isChecked) {
+        localClaimAt.delete(id);
+      }
+      if (isTabActive('utb')) renderUtb();
+      return r;
+    });
+  };
+
+  // Detak 1 detik: perbarui hitung mundur & lepas klaim yang sudah habis waktunya
+  setInterval(() => {
+    if (!antrian.length) return;
+    if (expireClaims(antrian)) {
+      if (isTabActive('utb')) renderUtb();
+      if (isTabActive('antrian')) renderAntrian();
+      if (typeof refreshUtbConfirmIfOpen === 'function') refreshUtbConfirmIfOpen();
+    } else if (isTabActive('utb')) {
+      updateTimerTexts();
+    }
+  }, 1000);
+})();
