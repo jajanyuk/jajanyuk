@@ -918,6 +918,33 @@ window.copyRekapUtb = async function() {
     range = r === 'all' ? 'all' : '7';
     try { localStorage.setItem(KEY, range); } catch (_) {}
     applyRange();
+    ensureLoaded();
+  }
+
+  // Data pesanan di browser hanya dimuat mulai tanggal tertentu (default: hari ini).
+  // Saat admin membuka Pesananku, muat juga 7 hari ke belakang / semua tanggal sesuai pilihan,
+  // supaya toggle untuk tanggal-tanggal itu muncul.
+  let extendLoad = false;
+  function neededFrom() {
+    if (!isAdmin || !isTabActive('myorders')) return null;
+    return range === 'all' ? '2020-01-01' : cutoffDate();
+  }
+  // updateOrdersListener memakai getDateRange(...) untuk menentukan tanggal awal muat data;
+  // selama dipanggil dari sana, tambahkan tanggal awal yang dibutuhkan daftar toggle.
+  const origGetDateRange = getDateRange;
+  getDateRange = function () {
+    const r = origGetDateRange.apply(this, arguments);
+    const from = extendLoad ? neededFrom() : null;
+    return from ? (Array.isArray(r) ? r.concat([from]) : [from]) : r;
+  };
+  const origUpdateListener = window.updateOrdersListener;
+  window.updateOrdersListener = function () {
+    extendLoad = true;
+    try { return origUpdateListener.apply(this, arguments); } finally { extendLoad = false; }
+  };
+  function ensureLoaded() {
+    const from = neededFrom();
+    if (from && (!currentOrdersFromDate || from < currentOrdersFromDate)) window.updateOrdersListener();
   }
 
   document.addEventListener('click', e => {
@@ -929,7 +956,100 @@ window.copyRekapUtb = async function() {
   renderPesanankuAdminManage = function () {
     const r = origManage.apply(this, arguments);
     applyRange();
+    ensureLoaded();
     return r;
   };
   applyRange();
+})();
+
+// ============================================================
+// TAB PESANAN: "LUNAS SEMUA" PER NAMA PEMBELI
+// Semua item belum lunas milik satu pembeli (sesuai filter yang tampil) ditandai lunas
+// dalam SATU batch -> satu transaksi di worker -> satu pesan PAID di grup WhatsApp.
+// ============================================================
+(function () {
+  let rows = [];          // [{ name, key, items: [order], total }]
+  let busyKey = null;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Pesanan yang sedang tampil di tab Pesanan (filter tanggal + nama, sama seperti renderOrders)
+  function visibleOrders() {
+    const fb = document.getElementById('filterBuyer');
+    const q = fb ? fb.value.toLowerCase().trim() : '';
+    let list = filterByDateRange(orders, getFilterDates(pesananDateMode, 'pesananDateFrom', 'pesananDateTo'));
+    if (q) list = list.filter(o => (o.buyer || '').toLowerCase().includes(q));
+    return list;
+  }
+
+  function renderPayAll() {
+    const wrap = document.getElementById('payAllWrap');
+    if (!wrap) return;
+    if (!isAdmin) { wrap.style.display = 'none'; return; }
+    const map = new Map();
+    visibleOrders().forEach(o => {
+      if (o.paid || !o.buyer) return;
+      const key = o.buyer.trim().toLowerCase();
+      if (!map.has(key)) map.set(key, { name: o.buyer.trim(), key, items: [], total: 0 });
+      const g = map.get(key);
+      g.items.push(o);
+      g.total += (o.price || 0) * (o.qty || 1);
+    });
+    // Hanya pembeli dengan > 1 item belum lunas (1 item cukup pakai tombol per item)
+    rows = [...map.values()].filter(g => g.items.length > 1).sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    if (!rows.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+    wrap.style.display = '';
+    wrap.innerHTML = `<div class="pay-all-title">💸 Lunas per Nama <span>${rows.length} pembeli</span></div>` +
+      rows.map((g, i) => {
+        const busy = busyKey === g.key;
+        const dates = [...new Set(g.items.map(o => o.date).filter(Boolean))].sort();
+        const dateTxt = dates.length === 1 ? formatTanggalIndo(dates[0]) : dates.length + ' tanggal';
+        return `<div class="pay-all-row">
+          <div class="pay-all-info">
+            <div class="pay-all-name">${esc(g.name)}</div>
+            <div class="pay-all-meta">${g.items.length} item · ${esc(dateTxt)} · <b>${rupiah(g.total)}</b></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-success pay-all-btn" data-i="${i}" ${busy ? 'disabled' : ''}>${busy ? '⏳ Menyimpan…' : '✓ Lunas Semua'}</button>
+        </div>`;
+      }).join('');
+  }
+
+  async function payAll(g) {
+    if (busyKey) return;
+    const hasDeposit = deposits.some(d => d.name && d.name.trim().toLowerCase() === g.key && getDepositSisaById(d) > 0);
+    const msg = 'Tandai LUNAS ' + g.items.length + ' item atas nama ' + g.name + '?\n' +
+      'Total: ' + rupiah(g.total) + '\n\n' +
+      g.items.map(o => '• ' + (o.item || '-') + ((o.qty || 1) > 1 ? ' x' + o.qty : '') + ' (' + (o.date || '-') + ')').join('\n') +
+      (hasDeposit ? '\n\n⚠️ ' + g.name + ' punya deposit. "Lunas Semua" TIDAK memotong deposit. Untuk bayar pakai deposit, gunakan tombol per item.' : '') +
+      '\n\nKonfirmasi PAID dikirim ke grup WhatsApp dalam 1 pesan.';
+    if (!confirm(msg)) return;
+    busyKey = g.key; renderPayAll();
+    setSyncBadge('loading');
+    try {
+      const batch = writeBatch(db);
+      g.items.forEach(o => batch.update(doc(db, 'orders', o.firestoreId), { paid: true, paidViaDeposit: false }));
+      await batch.commit();
+      showToast('✓ ' + g.items.length + ' item ' + g.name + ' ditandai lunas');
+      setSyncBadge('ok');
+    } catch (e) {
+      console.error('Lunas semua gagal:', e);
+      showToast('Gagal menandai lunas!', '❌');
+      setSyncBadge('err');
+    } finally {
+      busyKey = null; renderPayAll();
+    }
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('#payAllWrap .pay-all-btn');
+    if (!b || b.disabled) return;
+    const g = rows[Number(b.dataset.i)];
+    if (g) payAll(g);
+  });
+
+  const origRender = window.renderOrders;
+  window.renderOrders = function () {
+    const r = origRender.apply(this, arguments);
+    try { renderPayAll(); } catch (e) { console.error(e); }
+    return r;
+  };
 })();
