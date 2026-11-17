@@ -1453,3 +1453,39 @@ window.copyRekapUtb = async function() {
     return r;
   };
 })();
+
+// ============================================================
+// PESANANKU (ADMIN): TOGGLE TANGGAL BISA DIPILIH LEBIH DARI SATU
+// Versi lama mematikan semua tanggal lain saat satu tanggal dinyalakan. Sekarang hanya tanggal
+// yang diklik yang berubah, jadi admin bebas menampilkan beberapa tanggal sekaligus.
+// ============================================================
+(function () {
+  const busy = new Set();   // cegah klik ganda pada tanggal yang sama saat masih menyimpan
+  window.togglePesanankuDate = async function (dateStr, checked) {
+    if (!isAdmin) {
+      showToast('Hanya admin yang bisa mengatur tampilan tanggal', '🔒');
+      return;
+    }
+    if (busy.has(dateStr)) return;
+    busy.add(dateStr);
+    const prev = pesanankuVisibleDates[dateStr];
+    // Tampilkan langsung di layar admin; data resmi tetap dari server lewat listener setelan
+    pesanankuVisibleDates = Object.assign({}, pesanankuVisibleDates, { [dateStr]: !!checked });
+    setSyncBadge('loading');
+    try {
+      // merge: hanya tanggal ini yang diubah, tanggal lain tetap seperti semula
+      await setDoc(doc(db, 'settings', 'pesanankuVisibility'), { dates: { [dateStr]: !!checked } }, { merge: true });
+      const label = dateStr === '-' ? 'Tanpa tanggal' : formatTanggalIndo(dateStr);
+      showToast(checked ? label + ' terlihat oleh user' : label + ' disembunyikan', checked ? '👁️' : '🙈');
+      setSyncBadge('ok');
+    } catch (e) {
+      console.error('Toggle pesananku date error:', e);
+      pesanankuVisibleDates = Object.assign({}, pesanankuVisibleDates, { [dateStr]: prev === true });
+      showToast('Gagal mengubah tampilan tanggal!', '❌');
+      setSyncBadge('err');
+    } finally {
+      busy.delete(dateStr);
+      if (isTabActive('myorders')) renderMyOrders();
+    }
+  };
+})();
