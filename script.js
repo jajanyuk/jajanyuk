@@ -408,8 +408,8 @@ window.copyRekapUtb = async function() {
   let payloadError = '';
   let staticFetch = null;      // permintaan gambar QRIS yang sedang berjalan
   let dynSrc = '';              // gambar QRIS dinamis terakhir
+  let dynText = '';             // isi QRIS dinamis dari gambar terakhir
   let dynInfo = null;           // { name, amount }
-  let lastOrdersRef = null;
   let amountTouched = false;
 
   const $ = id => document.getElementById(id);
@@ -576,10 +576,12 @@ window.copyRekapUtb = async function() {
   }
 
   // ---------- data tagihan ----------
+  // Tab QRIS memakai data yang SAMA dengan Pesananku: pesanan di tanggal yang di-enable admin
+  // (toggle tanggal Pesananku). Admin & user melihat daftar tagihan yang sama, tanpa query tambahan.
   function visibleOrders() {
-    if (isAdmin) return orders;
-    return orders.filter(o => pesanankuVisibleDates[pesanankuDateKey(o)] === true);
+    return orders.filter(o => !o.paid && pesanankuVisibleDates[pesanankuDateKey(o)] === true);
   }
+  function dataReady() { return ordersLoaded && pesanankuSettingsLoaded; }
   function unpaidByBuyer() {
     const map = new Map();
     visibleOrders().forEach(o => {
@@ -603,7 +605,7 @@ window.copyRekapUtb = async function() {
     wrap.innerHTML = `
       <div class="card qris-pay-card" id="qrisPayCard">
         <div class="section-title">⚡ QRIS Dinamis sesuai pesanan</div>
-        <div class="qris-pay-sub">Isi nama pemesan, nominal &amp; QRIS dibuat otomatis sesuai tagihan.</div>
+        <div class="qris-pay-sub">Isi nama pemesan, nominal &amp; QRIS dibuat otomatis sesuai tagihan belum lunas.</div>
         <div class="form-group qris-name-group">
           <label class="form-label" for="qrisPayName">Nama pemesan</label>
           <div class="qris-name-box">
@@ -810,9 +812,11 @@ window.copyRekapUtb = async function() {
     if (!name) {
       billEl.innerHTML = '<span class="qris-pay-muted">Isi nama untuk melihat tagihan kamu.</span>';
     } else if (!bill) {
-      billEl.innerHTML = ordersLoaded
-        ? '<span class="qris-pay-muted">Tidak ada tagihan belum lunas atas nama ini. Nominal bisa diisi manual.</span>'
-        : '<span class="qris-pay-muted">Memuat data pesanan…</span>';
+      billEl.innerHTML = dataReady()
+        ? '<span class="qris-pay-muted">Tidak ada tagihan belum lunas atas nama ini pada tanggal yang ditampilkan. Nominal bisa diisi manual.</span>'
+        : pesanankuSettingsError
+          ? '<span class="qris-pay-muted">⚠️ Gagal memuat data pesanan, mencoba lagi…</span>'
+          : '<span class="qris-pay-muted">Memuat data pesanan…</span>';
     } else {
       billEl.innerHTML = `<div class="qris-pay-total"><span>${bill.items.length} item belum lunas</span><b>${rupiah(bill.total)}</b></div>
         <ul class="qris-pay-items">${itemsByDate(bill.items)}</ul>`;
@@ -848,12 +852,13 @@ window.copyRekapUtb = async function() {
     if (amount > 99999999) { showMsg('⚠️ Nominal terlalu besar'); return; }
 
     try {
-      const src = await renderQrImage(makeDynamicQris(staticPayload, amount));
+      const qrText = makeDynamicQris(staticPayload, amount);
+      const src = qrText === dynText && dynSrc ? dynSrc : await renderQrImage(qrText);
       if (seq !== renderSeq) return;
-      dynSrc = src;
+      dynSrc = src; dynText = qrText;   // selalu diperbarui bersamaan
       const label = bill ? bill.name : name;
       dynInfo = { name: label || 'Pembayaran', amount };
-      $('qrisDynImg').src = src;
+      if ($('qrisDynImg').getAttribute('src') !== src) $('qrisDynImg').src = src;
       $('qrisDynName').textContent = label ? '👤 ' + label : 'Pembayaran';
       $('qrisDynAmount').textContent = rupiah(amount);
       dynWrap.style.display = '';
@@ -935,18 +940,20 @@ window.copyRekapUtb = async function() {
     const r = origSwitch.apply(this, arguments);
     if (tab === 'qris') {
       if (!staticOpen) { staticPayload = null; payloadDocChecked = false; }   // cek ulang isi QRIS terbaru (dokumen kecil)
-      try { window.startOrdersListener(); } catch (_) {}
       try { if (typeof startPesanankuSettingsListener === 'function') startPesanankuSettingsListener(); } catch (_) {}
+      try { window.startOrdersListener(); } catch (e) { console.error(e); }
       refresh();
     }
     return r;
   };
 
-  // Data pesanan berubah (mis. admin tandai lunas) -> perbarui tagihan di tab QRIS
+  // Data pesanan / tanggal yang di-enable berubah -> perbarui tagihan (cek lokal saja, tanpa request)
+  let lastOrdersRef = null, lastVisSig = '';
   setInterval(() => {
     if (!isTabActive('qris')) return;
-    if (orders !== lastOrdersRef) { lastOrdersRef = orders; refresh(); }
-  }, 1500);
+    const sig = Object.keys(pesanankuVisibleDates || {}).filter(k => pesanankuVisibleDates[k] === true).sort().join(',') + '|' + ordersLoaded + pesanankuSettingsLoaded;
+    if (orders !== lastOrdersRef || sig !== lastVisSig) { lastOrdersRef = orders; lastVisSig = sig; refresh(); }
+  }, 1000);
 
   // Diekspos untuk pengujian
   window.__qrisDyn = { makeDynamicQris, validateQris, crc16, refresh };
@@ -1011,9 +1018,16 @@ window.copyRekapUtb = async function() {
   // Saat admin membuka Pesananku, muat juga 7 hari ke belakang / semua tanggal sesuai pilihan,
   // supaya toggle untuk tanggal-tanggal itu muncul.
   let extendLoad = false;
+  const STICKY_MS = 10 * 60 * 1000;
+  let stickyUntil = 0;
   function neededFrom() {
-    if (!isAdmin || !isTabActive('myorders')) return null;
-    return range === 'all' ? '2020-01-01' : cutoffDate();
+    if (!isAdmin) return null;
+    if (isTabActive('myorders')) {
+      stickyUntil = Date.now() + STICKY_MS;
+      return range === 'all' ? '2020-01-01' : cutoffDate();
+    }
+    // Baru keluar dari Pesananku: tetap muat 7 hari sebentar, hindari unduh ulang saat bolak-balik tab
+    return Date.now() < stickyUntil ? cutoffDate() : null;
   }
   // updateOrdersListener memakai getDateRange(...) untuk menentukan tanggal awal muat data;
   // selama dipanggil dari sana, tambahkan tanggal awal yang dibutuhkan daftar toggle.
@@ -1352,6 +1366,90 @@ window.copyRekapUtb = async function() {
     if (!choice) return;
     const r = await origToggle.apply(this, arguments);
     if (!choice.send) await skipWa([id]);
+    return r;
+  };
+})();
+
+// ============================================================
+// HEMAT KUOTA: USER (NON-ADMIN) HANYA MENGUNDUH PESANAN DI TANGGAL YANG DI-ENABLE ADMIN
+// User hanya memakai data pesanan di Pesananku & QRIS, dan keduanya hanya menampilkan tanggal
+// yang di-enable admin. Jadi query user = date IN (tanggal yang di-enable), bukan "sejak tanggal
+// tertua" (yang ikut mengunduh semua tanggal di antaranya). Admin tetap memakai query lama.
+// ============================================================
+(function () {
+  const MAX_IN = 60;          // sama dengan batas MAX_IN_VALUES di worker
+  let sub = null, subKey = '';
+  let useRange = false;       // worker lama belum mengenal 'in' -> rentang tanggal + saring di HP
+
+  function enabledDates() {
+    return Object.keys(pesanankuVisibleDates || {})
+      .filter(d => pesanankuVisibleDates[d] === true && /^\d{4}-\d{2}-\d{2}$/.test(d))
+      .sort();
+  }
+  function stopUser() {
+    if (sub) { try { sub(); } catch (_) {} }
+    sub = null; subKey = '';
+  }
+  function renderAll() {
+    if (isTabActive('myorders')) renderMyOrders();
+    if (isTabActive('qris') && window.__qrisDyn) window.__qrisDyn.refresh();
+  }
+
+  function subscribeUser() {
+    ordersListenerStarted = true;   // listener setelan tanggal memanggil ulang updateOrdersListener saat berubah
+    if (!pesanankuSettingsLoaded) {
+      // Daftar tanggal belum diketahui: tunggu setelan dari admin (tidak mengunduh pesanan apa pun dulu)
+      try { startPesanankuSettingsListener(); } catch (_) {}
+      return;
+    }
+    const dates = enabledDates();
+    const range = useRange || dates.length > MAX_IN;
+    const key = (range ? 'range:' : 'in:') + dates.join(',');
+    if (key === subKey && (sub || !dates.length)) return;
+    stopUser();
+    subKey = key;
+    if (!dates.length) {
+      orders = []; ordersLoaded = true; setSyncBadge('ok'); renderAll();
+      return;
+    }
+    ordersLoaded = false; setSyncBadge('loading');
+    const allow = new Set(dates);
+    const q = range
+      ? query(ordersCol, where('date', '>=', dates[0]), where('date', '<=', dates[dates.length - 1]), orderBy('createdAt', 'desc'))
+      : query(ordersCol, where('date', 'in', dates), orderBy('createdAt', 'desc'));
+    sub = onSnapshot(q, snap => {
+      if (subKey !== key) return;
+      // desc dari server (batas baris memotong data terlama), lalu dibalik: lama -> baru seperti aslinya
+      orders = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).filter(o => allow.has(o.date)).reverse();
+      ordersLoaded = true; setSyncBadge('ok');
+      renderAll();
+    }, err => {
+      if (subKey !== key) return;
+      if (!range && /\bin\b|Operator/i.test(String(err && err.message))) {
+        useRange = true; stopUser(); subscribeUser();
+        return;
+      }
+      console.error('Orders (user) listener error:', err);
+      setSyncBadge('err');
+    });
+  }
+
+  const origUpdate = window.updateOrdersListener;
+  window.updateOrdersListener = function () {
+    if (isAdmin) {
+      if (sub || subKey) stopUser();      // baru login admin -> kembali ke query admin
+      return origUpdate.apply(this, arguments);
+    }
+    // Bukan admin (mis. baru logout): hentikan query versi admin
+    if (ordersUnsub) { try { ordersUnsub(); } catch (_) {} ordersUnsub = null; currentOrdersFromDate = null; }
+    return subscribeUser();
+  };
+
+  // Masuk / keluar admin -> langsung pindah ke query yang sesuai (bukan menunggu pindah tab)
+  const origApply = applyAdminAccess;
+  applyAdminAccess = function () {
+    const r = origApply.apply(this, arguments);
+    try { if (ordersListenerStarted) window.updateOrdersListener(); } catch (e) { console.error(e); }
     return r;
   };
 })();

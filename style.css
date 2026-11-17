@@ -1274,3 +1274,98 @@ body.dark-mode .wa-send-opt span { color: var(--dk-white) !important; }
 .qris-static-hint { font-size: 11px; color: var(--text3); margin-top: 6px; }
 #qrisDisplay { max-width: 420px; margin: 0 auto 12px; animation: popIn .25s ease both; }
 body.dark-mode .qris-static-toggle { border-color: var(--dk-line) !important; }
+
+/* ============================================================
+   TOKO TUTUP: etalase dengan rolling door turun + gantungan "TUTUP"
+============================================================ */
+.closed-shop { padding: 26px 16px 24px; overflow: hidden; }
+.shop-scene { position: relative; width: min(280px, 100%); margin: 0 auto 18px; }
+.shop-board {
+  position: relative; z-index: 2;
+  background: #7C2D12; color: #FFEDD5; border: 3px solid #9A3412; border-radius: 10px 10px 0 0;
+  font-weight: 800; font-size: 16px; letter-spacing: .6px; padding: 7px 0;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.18);
+}
+.shop-awning {
+  position: relative; z-index: 2; height: 26px;
+  background: repeating-linear-gradient(90deg, #EA580C 0 28px, #FFF7ED 28px 56px);
+  box-shadow: 0 2px 0 rgba(0,0,0,.08);
+}
+/* lekukan bawah kanopi */
+.shop-awning::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px;
+  background:
+    radial-gradient(ellipse 14px 10px at 50% 0, #EA580C 96%, transparent 100%) 0 0 / 56px 10px repeat-x,
+    radial-gradient(ellipse 14px 10px at 50% 0, #FFF7ED 96%, transparent 100%) 28px 0 / 56px 10px repeat-x;
+}
+.shop-front {
+  display: flex; flex-direction: column; align-items: stretch;
+  background: #FED7AA; border-left: 3px solid #9A3412; border-right: 3px solid #9A3412;
+  padding: 18px 20px 0;
+}
+.shop-roll { height: 14px; background: linear-gradient(#A8A29E, #78716C); border-radius: 4px 4px 0 0; }
+.shop-door {
+  position: relative; height: 150px; overflow: hidden;
+  background: linear-gradient(#292524, #44403C);
+  border: 5px solid #78716C; border-top: none; border-bottom: none;
+}
+.shop-shutter {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(180deg, #E4E4E7 0 8px, #A1A1AA 8px 10px, #F4F4F5 10px 11px);
+  transform: translateY(-100%);
+  animation: shopShutterDown 1.5s cubic-bezier(.55,0,.35,1) .25s forwards;
+}
+.shop-shutter::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 9px; background: #71717A; }
+.shop-shutter-handle {
+  position: absolute; left: 50%; bottom: 14px; width: 34px; height: 7px; margin-left: -17px;
+  background: #52525B; border-radius: 4px;
+}
+@keyframes shopShutterDown {
+  0%   { transform: translateY(-100%); }
+  78%  { transform: translateY(2%); }
+  90%  { transform: translateY(-3%); }
+  100% { transform: translateY(0); }
+}
+/* gantungan: turun setelah rolling door tertutup, lalu berayun pelan */
+.shop-hang {
+  position: absolute; top: 10px; left: 50%; width: 110px; margin-left: -55px; z-index: 1;
+  opacity: 0; transform: translateY(-24px);
+  animation: shopHangDrop .45s ease-out 1.7s forwards;
+}
+.shop-hang::before {   /* paku */
+  content: ''; position: absolute; top: -1px; left: 50%; width: 8px; height: 8px; margin-left: -4px;
+  background: #57534E; border-radius: 50%; box-shadow: 0 1px 0 rgba(255,255,255,.5);
+}
+.shop-hang-swing {
+  display: flex; flex-direction: column; align-items: center;
+  transform-origin: 50% 2px;
+  animation: shopHangSwing 3.2s ease-in-out 2.15s infinite;
+}
+.shop-hang-rope { display: block; margin-top: 1px; }
+.shop-hang-board {
+  margin-top: -3px; padding: 6px 0; width: 100%;
+  background: #FFFBEB; color: #DC2626; border: 3px solid #DC2626; border-radius: 8px;
+  font-weight: 900; font-size: 18px; letter-spacing: 3px; line-height: 1.1;
+  box-shadow: 0 4px 10px rgba(0,0,0,.25);
+}
+@keyframes shopHangDrop {
+  0%   { opacity: 0; transform: translateY(-24px); }
+  70%  { opacity: 1; transform: translateY(3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes shopHangSwing {
+  0%, 100% { transform: rotate(0deg); }
+  25%      { transform: rotate(5deg); }
+  75%      { transform: rotate(-5deg); }
+}
+.shop-ground { height: 10px; background: #A8A29E; border-radius: 0 0 8px 8px; margin: 0 -6px; }
+.closed-shop .closed-store-title { margin-bottom: 0; }
+
+body.dark-mode .shop-front { background: var(--dk-gray-2) !important; }
+body.dark-mode .shop-ground { background: var(--dk-line) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shop-shutter { animation: none; transform: none; }
+  .shop-hang { animation: none; opacity: 1; transform: none; }
+  .shop-hang-swing { animation: none; }
+}

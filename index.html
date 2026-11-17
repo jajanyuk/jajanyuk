@@ -6,7 +6,7 @@
 <title>JajanYuk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261117-7">
+<link rel="stylesheet" href="style.css?v=20261117-8">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 </head>
 <body>
@@ -471,10 +471,26 @@
               </label>
             </div>
           </div>
-        <div id="utbClosedUI" style="display:none;" class="closed-store-card">
-        <div class="closed-store-icon">😴</div>
+        <div id="utbClosedUI" style="display:none;" class="closed-store-card closed-shop">
+        <div class="shop-scene" aria-hidden="true">
+          <div class="shop-board">JajanYuk</div>
+          <div class="shop-awning"></div>
+          <div class="shop-front">
+            <div class="shop-roll"></div>
+            <div class="shop-door">
+              <div class="shop-shutter"><span class="shop-shutter-handle"></span></div>
+              <div class="shop-hang">
+                <div class="shop-hang-swing">
+                  <svg class="shop-hang-rope" viewBox="0 0 70 26" width="70" height="26"><path d="M4 25 L35 3 L66 25" fill="none" stroke="#57534E" stroke-width="2.2" stroke-linecap="round"/></svg>
+                  <div class="shop-hang-board">TUTUP</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="shop-ground"></div>
+        </div>
         <div class="closed-store-title">Mohon maaf, JajanYuk Libur</div>
-      </div>  
+      </div>
 
       <div class="card utb-name-card" id="utbNamePrompt" style="display:none">
         <div class="utb-name-icon">♨️</div>
@@ -672,7 +688,7 @@
 <!-- ============================================================
      FIREBASE + APP LOGIC (external module file)
 ============================================================ -->
-<script type="module" src="script.js?v=20261117-10"></script>
+<script type="module" src="script.js?v=20261117-13"></script>
 
 </body>
 </html>
