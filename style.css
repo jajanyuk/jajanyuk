@@ -1227,3 +1227,50 @@ body.dark-mode .link-btn { color: var(--dk-yellow) !important; }
 body.dark-mode .pay-all-card { background: var(--dk-gray) !important; border-color: var(--dk-line) !important; }
 body.dark-mode .pay-all-row { border-color: var(--dk-line) !important; }
 body.dark-mode .pay-all-meta b { color: var(--dk-yellow) !important; }
+
+/* Modal Lunas per Nama */
+#payAllModal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 9991; display: none; align-items: center; justify-content: center; padding: 20px; animation: overlayIn .2s ease; }
+#payAllModal.show { display: flex; }
+#payAllModal .pay-all-box { max-width: 420px; animation: popIn .25s ease both; }
+.pay-all-checkall { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text2); margin-bottom: 6px; cursor: pointer; }
+.pay-all-list { display: flex; flex-direction: column; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.pay-all-date { font-size: 11px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: var(--text2); background: var(--surface2); padding: 6px 12px; }
+.pay-all-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border); cursor: pointer; }
+.pay-all-date + .pay-all-item { border-top: 0; }
+.pay-all-item input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--green-dark, #15803D); flex-shrink: 0; }
+.pay-all-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pay-all-item-name { font-weight: 700; color: var(--text); font-size: 14px; }
+.pay-all-item-sub { font-size: 12px; color: var(--text2); }
+.pay-all-item-price { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pay-all-item:has(input:not(:checked)) { opacity: .5; }
+.pay-all-warn { font-size: 12px; color: var(--text); background: var(--brand-light); border-left: 3px solid var(--brand); padding: 8px 10px; border-radius: 6px; margin-bottom: 12px; }
+.pay-all-note { font-size: 11px; color: var(--text3); text-align: center; margin: -6px 0 12px; }
+#payAllModalSubmit:disabled { opacity: .6; cursor: default; }
+body.dark-mode .pay-all-list, body.dark-mode .pay-all-item { border-color: var(--dk-line) !important; }
+body.dark-mode .pay-all-date { background: var(--dk-gray-2) !important; color: var(--dk-white) !important; }
+body.dark-mode .pay-all-item-name, body.dark-mode .pay-all-item-price { color: var(--dk-white) !important; }
+body.dark-mode .pay-all-warn { background: var(--dk-gray-2) !important; border-left-color: var(--dk-yellow) !important; color: var(--dk-white) !important; }
+
+/* Popup Tandai Lunas + pilihan kirim pesan grup */
+#paidPopup { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 9992; display: none; align-items: center; justify-content: center; padding: 20px; animation: overlayIn .2s ease; }
+#paidPopup.show { display: flex; }
+#paidPopup .paid-popup-box { max-width: 380px; animation: popIn .25s ease both; }
+.paid-popup-item { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; }
+.paid-popup-name { font-weight: 700; color: var(--text); font-size: 15px; }
+.paid-popup-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.wa-send-opt { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; margin-bottom: 14px; border-radius: var(--radius-sm); background: var(--surface2); cursor: pointer; }
+.wa-send-opt input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--green-dark, #15803D); flex-shrink: 0; }
+.wa-send-opt span { display: flex; flex-direction: column; font-size: 13px; color: var(--text); }
+.wa-send-opt small { font-size: 11px; color: var(--text3); font-weight: 500; }
+body.dark-mode .paid-popup-item { border-color: var(--dk-line) !important; }
+body.dark-mode .paid-popup-name { color: var(--dk-white) !important; }
+body.dark-mode .wa-send-opt { background: var(--dk-gray-2) !important; }
+body.dark-mode .wa-send-opt span { color: var(--dk-white) !important; }
+
+/* Tab QRIS: judul QRIS dinamis & tombol QRIS statis */
+.qris-pay-sub { font-size: 12px; color: var(--text2); margin: -4px 0 12px; }
+.qris-static-toggle { text-align: center; margin: 18px 0 12px; padding-top: 14px; border-top: 1px dashed var(--border); }
+.qris-static-toggle .btn { display: inline-flex; justify-content: center; min-width: 240px; }
+.qris-static-hint { font-size: 11px; color: var(--text3); margin-top: 6px; }
+#qrisDisplay { max-width: 420px; margin: 0 auto 12px; animation: popIn .25s ease both; }
+body.dark-mode .qris-static-toggle { border-color: var(--dk-line) !important; }

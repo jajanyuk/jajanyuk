@@ -495,27 +495,59 @@ window.copyRekapUtb = async function() {
 
   function fingerprint(src) { return src.length + ':' + src.slice(-64); }
 
-  async function ensureStaticPayload() {
-    // Hemat kuota: pakai gambar yang sudah dimuat tab QRIS (renderQris), jangan download ulang.
-    // Hanya jika belum ada sama sekali, ambil sekali dari server (permintaan bersamaan digabung).
-    const img = $('qrisImg');
-    let src = img && /^data:image\//.test(img.getAttribute('src') || '') ? img.getAttribute('src') : staticSrc;
-    if (!src) {
-      if (!staticFetch) {
-        staticFetch = getDoc(doc(db, 'settings', 'qris'))
-          .then(d => { const data = d.exists() ? d.data() : null; return (data && data.imageBase64) || ''; })
-          .catch(() => '')
-          .finally(() => { staticFetch = null; });
-      }
-      src = await staticFetch;
+  // Isi QRIS (teks EMV, ±200 byte) disimpan admin di settings/qrisPayload, supaya QRIS dinamis
+  // tidak perlu download gambar QRIS statis (bisa ratusan KB).
+  const PAYLOAD_DOC = ['settings', 'qrisPayload'];
+  let payloadDocChecked = false;
+
+  function fetchStaticImage() {
+    if (!staticFetch) {
+      staticFetch = getDoc(doc(db, 'settings', 'qris'))
+        .then(d => { const data = d.exists() ? d.data() : null; return (data && data.imageBase64) || ''; })
+        .catch(() => '')
+        .finally(() => { staticFetch = null; });
     }
+    return staticFetch;
+  }
+
+  // Admin: simpan isi QRIS ke server kalau belum ada / berbeda (non-kritis)
+  async function savePayloadDoc(payload) {
+    if (!isAdmin || !payload) return;
+    try {
+      const d = await getDoc(doc(db, ...PAYLOAD_DOC));
+      if (d.exists() && d.data() && d.data().payload === payload) return;
+      await setDoc(doc(db, ...PAYLOAD_DOC), { payload, updatedAt: Date.now() });
+    } catch (e) { console.warn('Simpan isi QRIS gagal:', e); }
+  }
+
+  async function ensureStaticPayload() {
+    // 1) Gambar QRIS statis sedang ditampilkan -> baca dari gambar itu
+    const img = $('qrisImg');
+    const shown = img && /^data:image\//.test(img.getAttribute('src') || '') ? img.getAttribute('src') : '';
+    if (shown) return usePayloadFromImage(shown);
+    if (staticPayload) return;
+    // 2) Isi QRIS yang disimpan admin (kecil, tanpa gambar)
+    if (!payloadDocChecked) {
+      payloadDocChecked = true;
+      try {
+        const d = await getDoc(doc(db, ...PAYLOAD_DOC));
+        const data = d.exists() ? d.data() : null;
+        if (data && data.payload) { staticPayload = validateQris(data.payload); payloadError = ''; return; }
+      } catch (_) {}
+    }
+    // 3) Belum ada: download gambar sekali lalu baca isinya
+    const src = staticSrc || await fetchStaticImage();
+    await usePayloadFromImage(src);
+  }
+
+  async function usePayloadFromImage(src) {
     if (!src) { staticSrc = ''; staticPayload = null; payloadError = 'QRIS belum di-upload admin'; return; }
     if (src === staticSrc && (staticPayload || payloadError)) return;
     staticSrc = src; staticPayload = null; payloadError = '';
     const fp = fingerprint(src);
     try {
       const cached = JSON.parse(lsGet(PAYLOAD_KEY) || 'null');
-      if (cached && cached.fp === fp && cached.payload) { staticPayload = validateQris(cached.payload); return; }
+      if (cached && cached.fp === fp && cached.payload) { staticPayload = validateQris(cached.payload); savePayloadDoc(staticPayload); return; }
     } catch (_) {}
     try {
       staticPayload = validateQris(await decodeImage(src));
@@ -523,6 +555,7 @@ window.copyRekapUtb = async function() {
     } catch (e) {
       payloadError = e.message || 'QRIS tidak terbaca';
     }
+    if (staticPayload) savePayloadDoc(staticPayload);
   }
 
   async function renderQrImage(text) {
@@ -569,7 +602,8 @@ window.copyRekapUtb = async function() {
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <div class="card qris-pay-card" id="qrisPayCard">
-        <div class="section-title">💳 Bayar dengan QRIS</div>
+        <div class="section-title">⚡ QRIS Dinamis sesuai pesanan</div>
+        <div class="qris-pay-sub">Isi nama pemesan, nominal &amp; QRIS dibuat otomatis sesuai tagihan.</div>
         <div class="form-group qris-name-group">
           <label class="form-label" for="qrisPayName">Nama pemesan</label>
           <div class="qris-name-box">
@@ -597,8 +631,15 @@ window.copyRekapUtb = async function() {
         <div class="qris-dyn-note">Nominal otomatis terisi saat discan. Setelah bayar, tekan <b>Konfirmasi Pembayaran</b> supaya admin langsung mengecek.</div>
         <button type="button" class="btn btn-primary qris-confirm-btn" id="qrisConfirmBtn" style="display:none">✅ Saya sudah bayar · Konfirmasi Pembayaran</button>
       </div>
-      <div id="qrisDynMsg" class="qris-dyn-msg" style="display:none"></div>`;
+      <div id="qrisDynMsg" class="qris-dyn-msg" style="display:none"></div>
+      <div class="qris-static-toggle">
+        <button type="button" class="btn btn-ghost" id="qrisStaticBtn">📷 Tampilkan QRIS Statis</button>
+        <div class="qris-static-hint">QRIS biasa, nominal diisi manual saat bayar</div>
+      </div>
+      <div id="qrisStaticMsg" class="qris-dyn-msg" style="display:none"></div>`;
     tab.insertBefore(wrap, $('qrisDisplay'));
+    $('qrisDisplay').style.display = 'none';
+    $('qrisStaticBtn').addEventListener('click', toggleStatic);
 
     const nameEl = $('qrisPayName'), amtEl = $('qrisPayAmount'), listEl = $('qrisNameList'), clearEl = $('qrisNameClear');
     nameEl.value = lsGet(NAME_KEY) || (typeof utbUserName === 'string' ? utbUserName : '') || '';
@@ -792,7 +833,7 @@ window.copyRekapUtb = async function() {
 
     const dynWrap = $('qrisDynWrap'), staticWrap = $('qrisDisplay');
     if (!amount) {
-      dynWrap.style.display = 'none'; staticWrap.style.display = '';
+      dynWrap.style.display = 'none';
       showMsg(''); dynInfo = null;
       return;
     }
@@ -800,8 +841,8 @@ window.copyRekapUtb = async function() {
     await ensureStaticPayload();
     if (seq !== renderSeq) return;
     if (!staticPayload) {
-      dynWrap.style.display = 'none'; staticWrap.style.display = '';
-      showMsg('⚠️ QRIS otomatis belum bisa dibuat (' + payloadError + '). Scan QRIS di bawah lalu isi nominal ' + rupiah(amount) + ' secara manual.');
+      dynWrap.style.display = 'none';
+      showMsg('⚠️ QRIS otomatis belum bisa dibuat (' + payloadError + '). Buka QRIS Statis di bawah lalu isi nominal ' + rupiah(amount) + ' secara manual.');
       return;
     }
     if (amount > 99999999) { showMsg('⚠️ Nominal terlalu besar'); return; }
@@ -815,12 +856,12 @@ window.copyRekapUtb = async function() {
       $('qrisDynImg').src = src;
       $('qrisDynName').textContent = label ? '👤 ' + label : 'Pembayaran';
       $('qrisDynAmount').textContent = rupiah(amount);
-      dynWrap.style.display = ''; staticWrap.style.display = 'none';
+      dynWrap.style.display = '';
       showMsg('');
       registerIntent(label, amount, bill ? bill.items.map(i => i.id) : []);
     } catch (e) {
-      dynWrap.style.display = 'none'; staticWrap.style.display = '';
-      showMsg('⚠️ Gagal membuat QRIS otomatis: ' + (e.message || e) + '. Gunakan QRIS di bawah.');
+      dynWrap.style.display = 'none';
+      showMsg('⚠️ Gagal membuat QRIS otomatis: ' + (e.message || e) + '. Gunakan QRIS Statis di bawah.');
     }
   }
 
@@ -844,11 +885,56 @@ window.copyRekapUtb = async function() {
     return origOpen.apply(this, arguments);
   };
 
+  // ---------- QRIS statis: hanya dimuat saat tombol "Tampilkan QRIS Statis" ditekan ----------
+  let staticOpen = false;
+  async function toggleStatic() {
+    const btn = $('qrisStaticBtn'), box = $('qrisDisplay'), msg = $('qrisStaticMsg');
+    staticOpen = !staticOpen;
+    if (!staticOpen) {
+      box.style.display = 'none'; msg.style.display = 'none';
+      btn.textContent = '📷 Tampilkan QRIS Statis';
+      return;
+    }
+    btn.disabled = true; btn.textContent = '⏳ Memuat QRIS Statis…';
+    const src = staticSrc || await fetchStaticImage();   // sudah pernah diunduh -> pakai ulang
+    btn.disabled = false;
+    if (!staticOpen) return;
+    if (!src) {
+      msg.style.display = ''; msg.textContent = '⚠️ QRIS statis belum di-upload admin.';
+      staticOpen = false; btn.textContent = '📷 Tampilkan QRIS Statis';
+      return;
+    }
+    $('qrisImg').src = src; $('qrisImgFull').src = src;
+    box.style.display = ''; msg.style.display = 'none';
+    btn.textContent = '🙈 Sembunyikan QRIS Statis';
+    usePayloadFromImage(src);   // sekalian: admin menyimpan isi QRIS untuk QRIS dinamis
+  }
+
+  // Kode lama memuat gambar QRIS statis setiap tab dibuka -> hanya jika QRIS Statis sedang dibuka
+  const origRenderQris = renderQris;
+  renderQris = function () { if (staticOpen) return origRenderQris.apply(this, arguments); };
+
+  // Admin mengganti / menghapus QRIS -> isi QRIS lama tidak berlaku lagi
+  function resetStaticPayload() {
+    staticPayload = null; staticSrc = ''; payloadError = ''; payloadDocChecked = false;
+    if (isAdmin) deleteDoc(doc(db, ...PAYLOAD_DOC)).catch(() => {});
+  }
+  ['handleQrisUpload', 'changeQris'].forEach(fn => {
+    const orig = window[fn];
+    if (typeof orig !== 'function') return;
+    window[fn] = async function () {
+      const r = await orig.apply(this, arguments);
+      resetStaticPayload();
+      return r;
+    };
+  });
+
   // Saat tab QRIS dibuka: pastikan data pesanan dimuat, lalu tampilkan tagihan
   const origSwitch = window.switchTab;
   window.switchTab = function (tab) {
     const r = origSwitch.apply(this, arguments);
     if (tab === 'qris') {
+      if (!staticOpen) { staticPayload = null; payloadDocChecked = false; }   // cek ulang isi QRIS terbaru (dokumen kecil)
       try { window.startOrdersListener(); } catch (_) {}
       try { if (typeof startPesanankuSettingsListener === 'function') startPesanankuSettingsListener(); } catch (_) {}
       refresh();
@@ -961,16 +1047,18 @@ window.copyRekapUtb = async function() {
   };
   applyRange();
 })();
-
 // ============================================================
 // TAB PESANAN: "LUNAS SEMUA" PER NAMA PEMBELI
-// Semua item belum lunas milik satu pembeli (sesuai filter yang tampil) ditandai lunas
-// dalam SATU batch -> satu transaksi di worker -> satu pesan PAID di grup WhatsApp.
+// Tombol membuka modal berisi detail item per tanggal (bisa dicentang/dikecualikan).
+// Item terpilih ditandai lunas dalam SATU batch -> satu transaksi di worker ->
+// satu pesan PAID di grup WhatsApp.
 // ============================================================
 (function () {
   let rows = [];          // [{ name, key, items: [order], total }]
-  let busyKey = null;
+  let modalGroup = null;  // pembeli yang sedang dibuka di modal
+  let saving = false;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const amountOf = o => (o.price || 0) * (o.qty || 1);
 
   // Pesanan yang sedang tampil di tab Pesanan (filter tanggal + nama, sama seperti renderOrders)
   function visibleOrders() {
@@ -992,7 +1080,7 @@ window.copyRekapUtb = async function() {
       if (!map.has(key)) map.set(key, { name: o.buyer.trim(), key, items: [], total: 0 });
       const g = map.get(key);
       g.items.push(o);
-      g.total += (o.price || 0) * (o.qty || 1);
+      g.total += amountOf(o);
     });
     // Hanya pembeli dengan > 1 item belum lunas (1 item cukup pakai tombol per item)
     rows = [...map.values()].filter(g => g.items.length > 1).sort((a, b) => a.name.localeCompare(b.name, 'id'));
@@ -1000,7 +1088,6 @@ window.copyRekapUtb = async function() {
     wrap.style.display = '';
     wrap.innerHTML = `<div class="pay-all-title">💸 Lunas per Nama <span>${rows.length} pembeli</span></div>` +
       rows.map((g, i) => {
-        const busy = busyKey === g.key;
         const dates = [...new Set(g.items.map(o => o.date).filter(Boolean))].sort();
         const dateTxt = dates.length === 1 ? formatTanggalIndo(dates[0]) : dates.length + ' tanggal';
         return `<div class="pay-all-row">
@@ -1008,48 +1095,263 @@ window.copyRekapUtb = async function() {
             <div class="pay-all-name">${esc(g.name)}</div>
             <div class="pay-all-meta">${g.items.length} item · ${esc(dateTxt)} · <b>${rupiah(g.total)}</b></div>
           </div>
-          <button type="button" class="btn btn-sm btn-success pay-all-btn" data-i="${i}" ${busy ? 'disabled' : ''}>${busy ? '⏳ Menyimpan…' : '✓ Lunas Semua'}</button>
+          <button type="button" class="btn btn-sm btn-success pay-all-btn" data-i="${i}">👁️ Detail & Lunas</button>
         </div>`;
       }).join('');
+    // Modal terbuka & data berubah (mis. item dilunasi dari HP lain) -> segarkan isinya
+    if (modalGroup && !saving) refreshModalGroup();
   }
 
-  async function payAll(g) {
-    if (busyKey) return;
+  // ---------- modal ----------
+  function ensureModal() {
+    let m = document.getElementById('payAllModal');
+    if (m) return m;
+    m = document.createElement('div');
+    m.id = 'payAllModal';
+    m.innerHTML = `
+      <div class="utb-confirm-box pay-all-box" role="dialog" aria-modal="true" aria-labelledby="payAllModalTitle">
+        <div class="utb-confirm-icon">💸</div>
+        <div class="utb-confirm-title" id="payAllModalTitle">Tandai Lunas</div>
+        <div class="utb-confirm-buyer">👤 <span id="payAllModalBuyer">-</span></div>
+        <label class="pay-all-checkall"><input type="checkbox" id="payAllCheckAll" checked> Pilih semua</label>
+        <div class="pay-all-list" id="payAllModalList"></div>
+        <div class="pay-all-warn" id="payAllModalWarn" style="display:none"></div>
+        <div class="utb-confirm-total-row">
+          <span id="payAllModalCount">0 item</span>
+          <span id="payAllModalTotal">Rp 0</span>
+        </div>
+        <label class="wa-send-opt"><input type="checkbox" id="payAllModalWa">
+          <span><b>📣 Kirim pesan PAID ke grup WhatsApp</b><small>Semua item terpilih dikirim dalam 1 pesan</small></span></label>
+        <div class="utb-confirm-actions">
+          <button type="button" class="btn btn-ghost" id="payAllModalCancel" style="flex:1;justify-content:center">Batal</button>
+          <button type="button" class="btn btn-success" id="payAllModalSubmit" style="flex:1;justify-content:center">✓ Tandai Lunas</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) closeModal(); });
+    m.querySelector('#payAllModalCancel').addEventListener('click', closeModal);
+    m.querySelector('#payAllModalSubmit').addEventListener('click', submitModal);
+    m.querySelector('#payAllCheckAll').addEventListener('change', e => {
+      m.querySelectorAll('#payAllModalList input[type=checkbox]').forEach(c => { c.checked = e.target.checked; });
+      updateModalTotal();
+    });
+    m.querySelector('#payAllModalList').addEventListener('change', updateModalTotal);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && m.classList.contains('show')) closeModal(); });
+    return m;
+  }
+
+  function openModal(g) {
+    const m = ensureModal();
+    modalGroup = g;
+    m.querySelector('#payAllModalBuyer').textContent = g.name;
+    m.querySelector('#payAllCheckAll').checked = true;
+    m.querySelector('#payAllModalWa').checked = window.__paidWa ? window.__paidWa.getPref() : true;
     const hasDeposit = deposits.some(d => d.name && d.name.trim().toLowerCase() === g.key && getDepositSisaById(d) > 0);
-    const msg = 'Tandai LUNAS ' + g.items.length + ' item atas nama ' + g.name + '?\n' +
-      'Total: ' + rupiah(g.total) + '\n\n' +
-      g.items.map(o => '• ' + (o.item || '-') + ((o.qty || 1) > 1 ? ' x' + o.qty : '') + ' (' + (o.date || '-') + ')').join('\n') +
-      (hasDeposit ? '\n\n⚠️ ' + g.name + ' punya deposit. "Lunas Semua" TIDAK memotong deposit. Untuk bayar pakai deposit, gunakan tombol per item.' : '') +
-      '\n\nKonfirmasi PAID dikirim ke grup WhatsApp dalam 1 pesan.';
-    if (!confirm(msg)) return;
-    busyKey = g.key; renderPayAll();
+    const warn = m.querySelector('#payAllModalWarn');
+    warn.style.display = hasDeposit ? '' : 'none';
+    warn.textContent = hasDeposit ? '⚠️ ' + g.name + ' punya deposit. Tombol ini TIDAK memotong deposit. Untuk bayar pakai deposit, gunakan tombol per item.' : '';
+    renderModalList(g.items.map(o => o.firestoreId));
+    m.classList.add('show');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function renderModalList(checkedIds) {
+    const m = document.getElementById('payAllModal');
+    if (!m || !modalGroup) return;
+    const checked = new Set(checkedIds);
+    let last = null;
+    m.querySelector('#payAllModalList').innerHTML = modalGroup.items.slice()
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || (a.createdAt || 0) - (b.createdAt || 0))
+      .map(o => {
+        let h = '';
+        if (o.date !== last) {
+          last = o.date;
+          h += `<div class="pay-all-date">🗓️ ${esc(o.date ? formatTanggalIndo(o.date) : 'Tanpa tanggal')}</div>`;
+        }
+        const qty = o.qty || 1;
+        return h + `<label class="pay-all-item">
+          <input type="checkbox" value="${esc(o.firestoreId)}" ${checked.has(o.firestoreId) ? 'checked' : ''}>
+          <span class="pay-all-item-info">
+            <span class="pay-all-item-name">${esc(o.item || '-')}</span>
+            ${qty > 1 ? `<span class="pay-all-item-sub">${qty} x ${rupiah(o.price || 0)}</span>` : ''}
+            ${o.note ? `<span class="pay-all-item-sub">📝 ${esc(o.note)}</span>` : ''}
+          </span>
+          <span class="pay-all-item-price">${rupiah(amountOf(o))}</span>
+        </label>`;
+      }).join('');
+    updateModalTotal();
+  }
+
+  function selectedItems() {
+    const m = document.getElementById('payAllModal');
+    if (!m || !modalGroup) return [];
+    const ids = new Set([...m.querySelectorAll('#payAllModalList input:checked')].map(c => c.value));
+    return modalGroup.items.filter(o => ids.has(o.firestoreId));
+  }
+
+  function updateModalTotal() {
+    const m = document.getElementById('payAllModal');
+    if (!m) return;
+    const sel = selectedItems();
+    const all = m.querySelectorAll('#payAllModalList input[type=checkbox]');
+    m.querySelector('#payAllCheckAll').checked = sel.length === all.length && all.length > 0;
+    m.querySelector('#payAllModalCount').textContent = sel.length + ' dari ' + all.length + ' item';
+    m.querySelector('#payAllModalTotal').textContent = rupiah(sel.reduce((t, o) => t + amountOf(o), 0));
+    const btn = m.querySelector('#payAllModalSubmit');
+    btn.disabled = saving || !sel.length;
+    btn.textContent = saving ? '⏳ Menyimpan…' : '✓ Tandai Lunas (' + sel.length + ')';
+  }
+
+  // Data pesanan berubah saat modal terbuka: buang item yang sudah lunas/terhapus, pertahankan centang
+  function refreshModalGroup() {
+    const m = document.getElementById('payAllModal');
+    if (!m || !m.classList.contains('show')) return;
+    const keep = new Set([...m.querySelectorAll('#payAllModalList input:checked')].map(c => c.value));
+    const known = new Set(modalGroup.items.map(o => o.firestoreId));
+    const fresh = rows.find(r => r.key === modalGroup.key);
+    if (!fresh) { closeModal(); return; }
+    fresh.items.forEach(o => { if (!known.has(o.firestoreId)) keep.add(o.firestoreId); });
+    modalGroup = fresh;
+    renderModalList([...keep]);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    const m = document.getElementById('payAllModal');
+    if (m) m.classList.remove('show');
+    document.body.style.overflow = '';
+    modalGroup = null;
+  }
+
+  async function submitModal() {
+    if (saving || !modalGroup) return;
+    const g = modalGroup, sel = selectedItems();
+    if (!sel.length) return;
+    const send = document.getElementById('payAllModalWa').checked;
+    if (window.__paidWa) window.__paidWa.setPref(send);
+    saving = true; updateModalTotal();
     setSyncBadge('loading');
     try {
       const batch = writeBatch(db);
-      g.items.forEach(o => batch.update(doc(db, 'orders', o.firestoreId), { paid: true, paidViaDeposit: false }));
+      sel.forEach(o => batch.update(doc(db, 'orders', o.firestoreId), { paid: true, paidViaDeposit: false }));
       await batch.commit();
-      showToast('✓ ' + g.items.length + ' item ' + g.name + ' ditandai lunas');
+      if (!send && window.__paidWa) await window.__paidWa.skipWa(sel.map(o => o.firestoreId));
+      showToast('✓ ' + sel.length + ' item ' + g.name + ' ditandai lunas' + (send ? '' : ' (tanpa pesan grup)'));
       setSyncBadge('ok');
+      saving = false;
+      closeModal();
     } catch (e) {
       console.error('Lunas semua gagal:', e);
       showToast('Gagal menandai lunas!', '❌');
       setSyncBadge('err');
-    } finally {
-      busyKey = null; renderPayAll();
+      saving = false;
+      updateModalTotal();
     }
   }
 
   document.addEventListener('click', e => {
     const b = e.target.closest('#payAllWrap .pay-all-btn');
-    if (!b || b.disabled) return;
+    if (!b) return;
     const g = rows[Number(b.dataset.i)];
-    if (g) payAll(g);
+    if (g) openModal(g);
   });
 
   const origRender = window.renderOrders;
   window.renderOrders = function () {
     const r = origRender.apply(this, arguments);
     try { renderPayAll(); } catch (e) { console.error(e); }
+    return r;
+  };
+})();
+
+// ============================================================
+// TANDAI LUNAS: POPUP KONFIRMASI + PILIHAN KIRIM PESAN PAID KE GRUP WHATSAPP
+// Dipakai tombol "Tandai Lunas" per item (togglePaid) dan modal "Lunas per Nama".
+// Jika tidak dikirim: pesan PAID yang belum terkirim dibatalkan lewat /api/wa/skip.
+// ============================================================
+(function () {
+  const PREF_KEY = 'jajanyuk_wa_send_paid';
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function getPref() { try { return localStorage.getItem(PREF_KEY) !== 'false'; } catch (_) { return true; } }
+  function setPref(v) { try { localStorage.setItem(PREF_KEY, v ? 'true' : 'false'); } catch (_) {} }
+
+  // Batalkan pesan PAID (belum terkirim) untuk pesanan-pesanan ini
+  async function skipWa(orderIds) {
+    try {
+      await callApi('/api/wa/skip', { orderIds });
+    } catch (e) {
+      console.error('Batal kirim WA gagal:', e);
+      showToast('Lunas tersimpan, tapi pesan WA mungkin tetap terkirim', '⚠️');
+    }
+  }
+  window.__paidWa = { getPref, setPref, skipWa };
+
+  // ---------- popup per item ----------
+  let resolver = null;
+  function ensurePopup() {
+    let m = document.getElementById('paidPopup');
+    if (m) return m;
+    m = document.createElement('div');
+    m.id = 'paidPopup';
+    m.innerHTML = `
+      <div class="utb-confirm-box paid-popup-box" role="dialog" aria-modal="true" aria-labelledby="paidPopupTitle">
+        <div class="utb-confirm-icon">✅</div>
+        <div class="utb-confirm-title" id="paidPopupTitle">Tandai Lunas?</div>
+        <div class="utb-confirm-buyer">👤 <span id="paidPopupBuyer">-</span></div>
+        <div class="paid-popup-item" id="paidPopupItem"></div>
+        <div class="utb-confirm-total-row"><span>Total</span><span id="paidPopupTotal">Rp 0</span></div>
+        <label class="wa-send-opt"><input type="checkbox" id="paidPopupWa">
+          <span><b>📣 Kirim pesan PAID ke grup WhatsApp</b><small>Matikan jika tidak perlu diumumkan di grup</small></span></label>
+        <div class="utb-confirm-actions">
+          <button type="button" class="btn btn-ghost" id="paidPopupCancel" style="flex:1;justify-content:center">Batal</button>
+          <button type="button" class="btn btn-success" id="paidPopupOk" style="flex:1;justify-content:center">✓ Tandai Lunas</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    const done = v => {
+      m.classList.remove('show');
+      document.body.style.overflow = '';
+      const r = resolver; resolver = null;
+      if (r) r(v);
+    };
+    m.addEventListener('click', e => { if (e.target === m) done(null); });
+    m.querySelector('#paidPopupCancel').addEventListener('click', () => done(null));
+    m.querySelector('#paidPopupOk').addEventListener('click', () => {
+      const send = m.querySelector('#paidPopupWa').checked;
+      setPref(send);
+      done({ send });
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && m.classList.contains('show')) done(null); });
+    return m;
+  }
+
+  function askPaid(o) {
+    const m = ensurePopup();
+    if (resolver) resolver(null);
+    const qty = o.qty || 1, total = (o.price || 0) * qty;
+    m.querySelector('#paidPopupBuyer').textContent = o.buyer || '-';
+    m.querySelector('#paidPopupItem').innerHTML =
+      `<div class="paid-popup-name">${esc(o.item || '-')}</div>
+       <div class="paid-popup-sub">🗓️ ${esc(o.date ? formatTanggalIndo(o.date) : '-')}${qty > 1 ? ' · ' + qty + ' x ' + rupiah(o.price || 0) : ''}</div>
+       ${o.note ? `<div class="paid-popup-sub">📝 ${esc(o.note)}</div>` : ''}`;
+    m.querySelector('#paidPopupTotal').textContent = rupiah(total);
+    m.querySelector('#paidPopupWa').checked = getPref();
+    m.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => m.querySelector('#paidPopupOk').focus(), 50);
+    return new Promise(r => { resolver = r; });
+  }
+
+  // Tombol "Tandai Lunas" per item: tampilkan popup dulu. "Batal Lunas" tetap seperti biasa.
+  const origToggle = window.togglePaid;
+  window.togglePaid = async function (id) {
+    const o = orders.find(x => x.firestoreId === id);
+    if (!o || o.paid) return origToggle.apply(this, arguments);
+    const choice = await askPaid(o);
+    if (!choice) return;
+    const r = await origToggle.apply(this, arguments);
+    if (!choice.send) await skipWa([id]);
     return r;
   };
 })();
