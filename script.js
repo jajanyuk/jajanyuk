@@ -406,6 +406,7 @@ window.copyRekapUtb = async function() {
   let staticPayload = null;     // isi QRIS statis (string EMV)
   let staticSrc = '';           // gambar QRIS statis (data URL)
   let payloadError = '';
+  let staticFetch = null;      // permintaan gambar QRIS yang sedang berjalan
   let dynSrc = '';              // gambar QRIS dinamis terakhir
   let dynInfo = null;           // { name, amount }
   let lastOrdersRef = null;
@@ -495,15 +496,18 @@ window.copyRekapUtb = async function() {
   function fingerprint(src) { return src.length + ':' + src.slice(-64); }
 
   async function ensureStaticPayload() {
-    let src = '';
-    try {
-      const doc0 = await getDoc(doc(db, 'settings', 'qris'));
-      const data = doc0.exists() ? doc0.data() : null;
-      src = data && data.imageBase64 ? data.imageBase64 : '';
-    } catch (_) {
-      // Offline / gagal ambil: pakai gambar yang sudah tampil di tab QRIS
-      const img = $('qrisImg');
-      src = img && /^data:image\//.test(img.getAttribute('src') || '') ? img.getAttribute('src') : staticSrc;
+    // Hemat kuota: pakai gambar yang sudah dimuat tab QRIS (renderQris), jangan download ulang.
+    // Hanya jika belum ada sama sekali, ambil sekali dari server (permintaan bersamaan digabung).
+    const img = $('qrisImg');
+    let src = img && /^data:image\//.test(img.getAttribute('src') || '') ? img.getAttribute('src') : staticSrc;
+    if (!src) {
+      if (!staticFetch) {
+        staticFetch = getDoc(doc(db, 'settings', 'qris'))
+          .then(d => { const data = d.exists() ? d.data() : null; return (data && data.imageBase64) || ''; })
+          .catch(() => '')
+          .finally(() => { staticFetch = null; });
+      }
+      src = await staticFetch;
     }
     if (!src) { staticSrc = ''; staticPayload = null; payloadError = 'QRIS belum di-upload admin'; return; }
     if (src === staticSrc && (staticPayload || payloadError)) return;
@@ -552,7 +556,7 @@ window.copyRekapUtb = async function() {
       const g = map.get(k);
       const amt = (o.price || 0) * (o.qty || 1);
       g.total += amt;
-      g.items.push({ item: o.item, qty: o.qty || 1, amount: amt, date: o.date });
+      g.items.push({ id: o.firestoreId, item: o.item, qty: o.qty || 1, amount: amt, date: o.date });
     });
     return map;
   }
@@ -566,10 +570,14 @@ window.copyRekapUtb = async function() {
     wrap.innerHTML = `
       <div class="card qris-pay-card" id="qrisPayCard">
         <div class="section-title">💳 Bayar dengan QRIS</div>
-        <div class="form-group">
+        <div class="form-group qris-name-group">
           <label class="form-label" for="qrisPayName">Nama pemesan</label>
-          <input class="form-input" id="qrisPayName" list="qrisPayNames" autocomplete="off" placeholder="Ketik / pilih nama kamu">
-          <datalist id="qrisPayNames"></datalist>
+          <div class="qris-name-box">
+            <input class="form-input" id="qrisPayName" autocomplete="off" spellcheck="false" placeholder="🔍 Cari nama kamu…"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qrisNameList">
+            <button type="button" class="qris-name-clear" id="qrisNameClear" aria-label="Hapus nama" hidden>✕</button>
+          </div>
+          <div class="qris-name-list" id="qrisNameList" role="listbox" hidden></div>
         </div>
         <div id="qrisPayBill" class="qris-pay-bill"></div>
         <div class="form-group" style="margin-top:10px">
@@ -586,24 +594,129 @@ window.copyRekapUtb = async function() {
           <img id="qrisDynImg" alt="QRIS dengan nominal">
           <div class="qris-tap-hint">👆 Ketuk untuk perbesar</div>
         </div>
-        <div class="qris-dyn-note">Nominal otomatis terisi saat discan. Setelah admin mengonfirmasi pembayaran, status <b>PAID</b> dikirim ke grup WhatsApp.</div>
+        <div class="qris-dyn-note">Nominal otomatis terisi saat discan. Setelah bayar, tekan <b>Konfirmasi Pembayaran</b> supaya admin langsung mengecek.</div>
+        <button type="button" class="btn btn-primary qris-confirm-btn" id="qrisConfirmBtn" style="display:none">✅ Saya sudah bayar · Konfirmasi Pembayaran</button>
       </div>
       <div id="qrisDynMsg" class="qris-dyn-msg" style="display:none"></div>`;
     tab.insertBefore(wrap, $('qrisDisplay'));
 
-    const nameEl = $('qrisPayName'), amtEl = $('qrisPayAmount');
+    const nameEl = $('qrisPayName'), amtEl = $('qrisPayAmount'), listEl = $('qrisNameList'), clearEl = $('qrisNameClear');
     nameEl.value = lsGet(NAME_KEY) || (typeof utbUserName === 'string' ? utbUserName : '') || '';
+    clearEl.hidden = !nameEl.value;
     let t = null;
+    const applyName = () => { lsSet(NAME_KEY, nameEl.value.trim()); refresh(); };
     nameEl.addEventListener('input', () => {
       amountTouched = false;
-      clearTimeout(t); t = setTimeout(() => { lsSet(NAME_KEY, nameEl.value.trim()); refresh(); }, 250);
+      clearEl.hidden = !nameEl.value;
+      renderNameList();
+      clearTimeout(t); t = setTimeout(applyName, 250);
     });
+    nameEl.addEventListener('focus', () => renderNameList());
+    nameEl.addEventListener('blur', () => setTimeout(hideNameList, 150));
+    nameEl.addEventListener('keydown', e => {
+      if (e.key === 'Escape') hideNameList();
+      if (e.key === 'Enter') {
+        const first = listEl.querySelector('.qris-name-opt');
+        if (first && !listEl.hidden) { e.preventDefault(); pickName(first.dataset.name); }
+      }
+    });
+    // mousedown (bukan click) supaya terpilih sebelum input kehilangan fokus
+    listEl.addEventListener('mousedown', e => {
+      const opt = e.target.closest('.qris-name-opt');
+      if (opt) { e.preventDefault(); pickName(opt.dataset.name); }
+    });
+    clearEl.addEventListener('click', () => {
+      nameEl.value = ''; clearEl.hidden = true; amountTouched = false;
+      applyName(); nameEl.focus();
+    });
+    function pickName(n) {
+      nameEl.value = n; clearEl.hidden = false; amountTouched = false;
+      hideNameList(); clearTimeout(t); applyName(); nameEl.blur();
+    }
+    $('qrisConfirmBtn').addEventListener('click', confirmPayment);
     amtEl.addEventListener('input', () => {
       const digits = amtEl.value.replace(/\D/g, '');
       amtEl.value = digits ? Number(digits).toLocaleString('id-ID') : '';
       amountTouched = true;
       clearTimeout(t); t = setTimeout(refresh, 400);
     });
+  }
+
+  // ---------- pencarian nama ----------
+  function renderNameList() {
+    const nameEl = $('qrisPayName'), listEl = $('qrisNameList');
+    if (!nameEl || !listEl || document.activeElement !== nameEl) return;
+    const q = nameEl.value.trim().toLowerCase();
+    const all = [...unpaidByBuyer().values()].sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    const hits = all.filter(b => !q || b.name.toLowerCase().includes(q)).slice(0, 30);
+    if (!all.length) { hideNameList(); return; }
+    if (hits.length === 1 && hits[0].name.toLowerCase() === q) { hideNameList(); return; }
+    listEl.innerHTML = hits.length
+      ? hits.map(b => `<div class="qris-name-opt" role="option" data-name="${esc(b.name)}">
+          <span class="qris-name-opt-name">${esc(b.name)}</span>
+          <span class="qris-name-opt-meta">${b.items.length} item · ${rupiah(b.total)}</span></div>`).join('')
+      : '<div class="qris-name-empty">Tidak ada tagihan dengan nama ini</div>';
+    listEl.hidden = false;
+    nameEl.setAttribute('aria-expanded', 'true');
+  }
+  function hideNameList() {
+    const listEl = $('qrisNameList');
+    if (listEl) listEl.hidden = true;
+    const nameEl = $('qrisPayName');
+    if (nameEl) nameEl.setAttribute('aria-expanded', 'false');
+  }
+
+  // ---------- konfirmasi pembayaran -> WhatsApp admin ----------
+  const CONFIRMED_KEY = 'jajanyuk_qris_confirmed';
+  const CONFIRMED_TTL = 30 * 60 * 1000;
+  let confirmCtx = null;      // { buyer, ids, amount, key }
+  let confirmBusy = false;
+  function confirmedMap() {
+    try {
+      const m = JSON.parse(lsGet(CONFIRMED_KEY) || '{}');
+      const now = Date.now();
+      Object.keys(m).forEach(k => { if (now - m[k] > CONFIRMED_TTL) delete m[k]; });
+      return m;
+    } catch (_) { return {}; }
+  }
+  function markConfirmed(key) {
+    const m = confirmedMap(); m[key] = Date.now(); lsSet(CONFIRMED_KEY, JSON.stringify(m));
+  }
+  function updateConfirmBtn() {
+    const btn = $('qrisConfirmBtn');
+    if (!btn) return;
+    if (!confirmCtx) { btn.style.display = 'none'; return; }
+    btn.style.display = '';
+    const done = !!confirmedMap()[confirmCtx.key];
+    btn.disabled = confirmBusy || done;
+    btn.classList.toggle('is-done', done);
+    btn.textContent = confirmBusy ? '⏳ Mengirim konfirmasi…'
+      : done ? '✓ Konfirmasi terkirim · admin sedang mengecek'
+      : '✅ Saya sudah bayar · Konfirmasi Pembayaran';
+  }
+  async function confirmPayment() {
+    if (!confirmCtx || confirmBusy) return;
+    const c = confirmCtx;
+    if (!confirm('Konfirmasi pembayaran atas nama ' + c.buyer + ' sebesar ' + rupiah(c.amount) + '?\n\nPastikan kamu sudah membayar lewat QRIS.')) return;
+    confirmBusy = true; updateConfirmBtn();
+    try {
+      const r = await callApi('/api/qris/confirm', { buyer: c.buyer, orderIds: c.ids });
+      if (r && r.ok) {
+        markConfirmed(c.key);
+        showToast('Konfirmasi terkirim, admin akan segera mengecek', '✅');
+      } else if (r && r.reason === 'recent') {
+        markConfirmed(c.key);
+        showToast('Konfirmasi sudah dikirim. Coba lagi dalam ' + Math.max(1, Math.ceil((r.retryAfterS || 60) / 60)) + ' menit', '⏳');
+      } else if (r && r.reason === 'nothing') {
+        showToast('Tagihan ini sudah lunas atau tidak ditemukan', 'ℹ️');
+      } else {
+        showToast('Gagal mengirim konfirmasi, coba lagi', '❌');
+      }
+    } catch (e) {
+      showToast('Gagal mengirim konfirmasi, coba lagi', '❌');
+    } finally {
+      confirmBusy = false; updateConfirmBtn();
+    }
   }
 
   function showMsg(text) {
@@ -613,6 +726,34 @@ window.copyRekapUtb = async function() {
     m.textContent = text || '';
   }
 
+  // ID pembayaran (nominal + kode unik, mis. 5008) hanya disimpan di server, tidak ditampilkan
+  let lastIntentKey = '';
+  function registerIntent(buyer, amount, orderIds) {
+    if (!buyer || !amount) return;
+    const ids = orderIds.filter(Boolean).sort();
+    const key = buyer.toLowerCase() + '|' + amount + '|' + ids.join(',');
+    if (key === lastIntentKey) return;
+    lastIntentKey = key;
+    Promise.resolve()
+      .then(() => callApi('/api/qris/intent', { buyer, amount, orderIds: ids }))
+      .catch(() => { if (lastIntentKey === key) lastIntentKey = ''; });
+  }
+
+  // Item dikelompokkan per tanggal pesanan
+  function itemsByDate(items) {
+    let last = null;
+    return items.slice()
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+      .map(i => {
+        let h = '';
+        if (i.date !== last) {
+          last = i.date;
+          h += `<li class="qris-pay-date">🗓️ ${esc(i.date ? formatTanggalIndo(i.date) : 'Tanpa tanggal')}</li>`;
+        }
+        return h + `<li><span>${esc(i.item)}${i.qty > 1 ? ' x' + i.qty : ''}</span><span>${rupiah(i.amount)}</span></li>`;
+      }).join('');
+  }
+
   let renderSeq = 0;
   async function refresh() {
     ensureUi();
@@ -620,7 +761,7 @@ window.copyRekapUtb = async function() {
     const seq = ++renderSeq;
     const bills = unpaidByBuyer();
 
-    $('qrisPayNames').innerHTML = [...bills.values()].map(b => `<option value="${esc(b.name)}">`).join('');
+    renderNameList();
 
     const name = $('qrisPayName').value.trim();
     const bill = name ? bills.get(name.toLowerCase()) : null;
@@ -633,12 +774,21 @@ window.copyRekapUtb = async function() {
         : '<span class="qris-pay-muted">Memuat data pesanan…</span>';
     } else {
       billEl.innerHTML = `<div class="qris-pay-total"><span>${bill.items.length} item belum lunas</span><b>${rupiah(bill.total)}</b></div>
-        <ul class="qris-pay-items">${bill.items.map(i => `<li><span>${esc(i.item)}${i.qty > 1 ? ' x' + i.qty : ''}</span><span>${rupiah(i.amount)}</span></li>`).join('')}</ul>`;
+        <ul class="qris-pay-items">${itemsByDate(bill.items)}</ul>`;
     }
 
     const amtEl = $('qrisPayAmount');
     if (!amountTouched) amtEl.value = bill ? Math.round(bill.total).toLocaleString('id-ID') : '';
     const amount = Number(amtEl.value.replace(/\D/g, '')) || 0;
+
+    // Tombol konfirmasi hanya untuk tagihan yang dibayar penuh sesuai daftar item
+    if (bill && amount === Math.round(bill.total)) {
+      const ids = bill.items.map(i => i.id).filter(Boolean).sort();
+      confirmCtx = { buyer: bill.name, ids, amount, key: bill.name.toLowerCase() + '|' + ids.join(',') };
+    } else {
+      confirmCtx = null;
+    }
+    updateConfirmBtn();
 
     const dynWrap = $('qrisDynWrap'), staticWrap = $('qrisDisplay');
     if (!amount) {
@@ -667,6 +817,7 @@ window.copyRekapUtb = async function() {
       $('qrisDynAmount').textContent = rupiah(amount);
       dynWrap.style.display = ''; staticWrap.style.display = 'none';
       showMsg('');
+      registerIntent(label, amount, bill ? bill.items.map(i => i.id) : []);
     } catch (e) {
       dynWrap.style.display = 'none'; staticWrap.style.display = '';
       showMsg('⚠️ Gagal membuat QRIS otomatis: ' + (e.message || e) + '. Gunakan QRIS di bawah.');
