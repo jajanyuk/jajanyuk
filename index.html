@@ -6,7 +6,7 @@
 <title>JajanYuk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261117-2">
+<link rel="stylesheet" href="style.css?v=20261117-3">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 </head>
 <body>
@@ -526,7 +526,12 @@
           <button class="btn btn-sm btn-ghost" style="flex:1;justify-content:center;font-size:11px" onclick="setAllPesanankuVisibility(true)">✅ Tampilkan Semua</button>
           <button class="btn btn-sm btn-ghost" style="flex:1;justify-content:center;font-size:11px" onclick="setAllPesanankuVisibility(false)">🚫 Sembunyikan Semua</button>
         </div>
+        <div class="date-range-switch" id="pesanankuRangeSwitch">
+          <button type="button" class="sort-btn" data-range="7">🗓️ 7 hari terakhir</button>
+          <button type="button" class="sort-btn" data-range="all">📚 Semua tanggal</button>
+        </div>
         <div id="myOrdersDateToggleList"></div>
+        <div class="date-range-more" id="pesanankuRangeMore" style="display:none"></div>
       </div>
 
       <!-- Pencarian berdasarkan nama -->
@@ -666,7 +671,7 @@
 <!-- ============================================================
      FIREBASE + APP LOGIC (external module file)
 ============================================================ -->
-<script type="module" src="script.js?v=20261117-4"></script>
+<script type="module" src="script.js?v=20261117-5"></script>
 
 </body>
 </html>

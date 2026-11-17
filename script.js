@@ -865,3 +865,71 @@ window.copyRekapUtb = async function() {
   // Diekspos untuk pengujian
   window.__qrisDyn = { makeDynamicQris, validateQris, crc16, refresh };
 })();
+
+// ============================================================
+// PESANANKU (ADMIN): DAFTAR TOGGLE TANGGAL "7 HARI TERAKHIR" / "SEMUA TANGGAL"
+// ============================================================
+(function () {
+  const KEY = 'jajanyuk_pesananku_range';
+  let range = '7';
+  try { range = localStorage.getItem(KEY) === 'all' ? 'all' : '7'; } catch (_) {}
+
+  function cutoffDate() {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);   // hari ini + 6 hari sebelumnya = 7 hari
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function applyRange() {
+    const sw = document.getElementById('pesanankuRangeSwitch');
+    if (sw) sw.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('active', b.dataset.range === range));
+    const list = document.getElementById('myOrdersDateToggleList');
+    const more = document.getElementById('pesanankuRangeMore');
+    if (!list) return;
+    const min = cutoffDate();
+    let hidden = 0, shown = 0;
+    [...list.children].forEach(row => {
+      const input = row.querySelector('input[onchange*="togglePesanankuDate"]');
+      const m = input && /togglePesanankuDate\('([^']*)'/.exec(input.getAttribute('onchange') || '');
+      if (!m) return;
+      const date = m[1];
+      const inRange = range === 'all' || (/^\d{4}-\d{2}-\d{2}$/.test(date) && date >= min);
+      row.style.display = inRange ? 'flex' : 'none';   // baris aslinya display:flex
+      row.style.borderBottom = '';
+      if (inRange) shown++; else hidden++;
+    });
+    // Garis pemisah: baris terlihat terakhir tanpa garis bawah
+    const visible = [...list.children].filter(r => r.style.display !== 'none' && r.querySelector('input[onchange*="togglePesanankuDate"]'));
+    visible.forEach((r, i) => { r.style.borderBottom = i === visible.length - 1 ? 'none' : '1px solid var(--border)'; });
+
+    if (more) {
+      if (range === '7' && hidden > 0) {
+        more.style.display = '';
+        more.innerHTML = (shown ? '' : 'Tidak ada pesanan dalam 7 hari terakhir. ') +
+          hidden + ' tanggal lebih lama disembunyikan · <button type="button" class="link-btn" data-range="all">Tampilkan semua</button>';
+      } else {
+        more.style.display = 'none';
+        more.innerHTML = '';
+      }
+    }
+  }
+
+  function setRange(r) {
+    range = r === 'all' ? 'all' : '7';
+    try { localStorage.setItem(KEY, range); } catch (_) {}
+    applyRange();
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('#pesanankuRangeSwitch [data-range], #pesanankuRangeMore [data-range]');
+    if (b) setRange(b.dataset.range);
+  });
+
+  const origManage = renderPesanankuAdminManage;
+  renderPesanankuAdminManage = function () {
+    const r = origManage.apply(this, arguments);
+    applyRange();
+    return r;
+  };
+  applyRange();
+})();
