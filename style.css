@@ -1213,3 +1213,17 @@ body.dark-mode .qris-confirm-btn.is-done { background: var(--dk-white) !importan
 .date-range-more { font-size: 12px; color: var(--text3); text-align: center; padding: 8px 0 2px; }
 .link-btn { background: none; border: 0; padding: 0; color: var(--brand-dark); font-weight: 700; font-size: inherit; cursor: pointer; text-decoration: underline; }
 body.dark-mode .link-btn { color: var(--dk-yellow) !important; }
+
+/* Tab Pesanan: Lunas Semua per nama */
+.pay-all-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; }
+.pay-all-title { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
+.pay-all-title span { font-weight: 500; color: var(--text2); font-size: 12px; margin-left: 4px; }
+.pay-all-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.pay-all-info { min-width: 0; }
+.pay-all-name { font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pay-all-meta { font-size: 12px; color: var(--text2); }
+.pay-all-meta b { color: var(--brand-dark); font-variant-numeric: tabular-nums; }
+.pay-all-btn { white-space: nowrap; flex-shrink: 0; }
+body.dark-mode .pay-all-card { background: var(--dk-gray) !important; border-color: var(--dk-line) !important; }
+body.dark-mode .pay-all-row { border-color: var(--dk-line) !important; }
+body.dark-mode .pay-all-meta b { color: var(--dk-yellow) !important; }
