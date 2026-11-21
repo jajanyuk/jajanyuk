@@ -1369,3 +1369,118 @@ body.dark-mode .shop-ground { background: var(--dk-line) !important; }
   .shop-hang { animation: none; opacity: 1; transform: none; }
   .shop-hang-swing { animation: none; }
 }
+
+/* ============================================================
+   QRIS: KODE UNIK PEMBAYARAN & RIWAYAT PEMBAYARAN OTOMATIS (ADMIN)
+   ============================================================ */
+.qris-code-note { max-width: 420px; margin: 10px auto 0; padding: 9px 12px; border-radius: var(--radius-sm); background: var(--green-light, #F0FDF4); border-left: 3px solid var(--green, #22C55E); font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.qris-code-note.is-warn { background: var(--surface2); border-left-color: var(--brand); }
+.qris-code-note b { font-variant-numeric: tabular-nums; }
+.qris-auto-card { margin-top: 14px; }
+.qris-auto-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.qris-auto-head .section-title { margin-bottom: 0; }
+.qris-auto-reload { padding: 6px 12px; font-size: 12px; }
+.qris-auto-list { margin-top: 10px; font-size: 13px; max-height: 360px; overflow: auto; }
+.qris-auto-row { padding: 8px 10px; border-left: 3px solid var(--border); border-radius: var(--radius-sm); background: var(--surface2); margin-bottom: 6px; }
+.qris-auto-row.is-ok { border-left-color: var(--green, #22C55E); }
+.qris-auto-row.is-warn { border-left-color: var(--red, #EF4444); }
+.qris-auto-main { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.qris-auto-main b { font-variant-numeric: tabular-nums; color: var(--text); }
+.qris-auto-badge { font-size: 12px; color: var(--text2); text-align: right; }
+.qris-auto-meta { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+.qris-auto-info { font-size: 11.5px; color: var(--text); margin-top: 3px; }
+body.dark-mode .qris-code-note, body.dark-mode .qris-auto-row { background: var(--dk-gray-2) !important; color: var(--dk-white) !important; }
+body.dark-mode .qris-auto-main b, body.dark-mode .qris-auto-info { color: var(--dk-white) !important; }
+
+/* ============================================================
+   TAB BUAT INVOICE (ADMIN)
+   ============================================================ */
+.inv-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.inv-number { font-family: 'DM Mono', monospace; background: var(--surface2); color: var(--text); }
+.inv-address { resize: vertical; min-height: 64px; line-height: 1.45; }
+.inv-item { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 8px; background: var(--surface); }
+.inv-item-top { display: flex; align-items: center; gap: 8px; }
+.inv-item-no { flex: 0 0 26px; height: 26px; border-radius: 50%; background: var(--brand-light); color: var(--brand-dark); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.inv-item-top .form-input { flex: 1; min-width: 0; }
+.inv-item-del { flex: 0 0 34px; height: 34px; border: 1.5px solid var(--border); background: none; border-radius: var(--radius-sm); color: var(--text2); cursor: pointer; font-size: 14px; }
+.inv-item-del:hover { border-color: var(--red); color: var(--red); }
+.inv-item-nums { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr) minmax(0, 1.2fr); gap: 8px; margin-top: 8px; align-items: end; }
+.inv-mini { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.inv-mini span, .inv-item-sub span { font-size: 10.5px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.4px; }
+.inv-mini .form-input { padding: 9px 10px; font-variant-numeric: tabular-nums; }
+.inv-item-sub { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; padding-bottom: 9px; min-width: 0; }
+.inv-item-sub b { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.inv-add { width: 100%; justify-content: center; border-style: dashed; margin-bottom: 14px; }
+.inv-extras { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.inv-extra { display: flex; flex-direction: column; gap: 6px; }
+.inv-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+.inv-check input { width: 18px; height: 18px; accent-color: var(--brand); }
+.inv-extra .form-input:disabled { opacity: 0.45; background: var(--surface2); }
+.inv-totals { border-top: 1px dashed var(--border); padding-top: 10px; }
+.inv-total-row { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--text2); padding: 3px 0; font-variant-numeric: tabular-nums; }
+.inv-total-row.inv-grand { margin-top: 6px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--brand); color: #fff; font-size: 16px; font-weight: 800; }
+.inv-result { margin-top: 12px; padding: 12px; border-radius: var(--radius-sm); background: var(--green-light); border-left: 3px solid var(--green); }
+.inv-result-title { font-size: 13.5px; color: var(--text); }
+.inv-result-title b { font-family: 'DM Mono', monospace; }
+.inv-result-warn { font-size: 12px; color: var(--text); margin-top: 6px; }
+.inv-result-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.inv-note { font-size: 12px; color: var(--text2); margin-top: 10px; line-height: 1.5; }
+.form-input.inv-invalid { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15); }
+@media (max-width: 420px) {
+  .inv-row { flex-direction: column; gap: 0; }
+  .inv-extras { grid-template-columns: 1fr; }
+}
+body.dark-mode .inv-total-row.inv-grand { color: var(--dk-bg) !important; }
+body.dark-mode .inv-item-no { color: var(--dk-yellow) !important; }
+body.dark-mode .inv-result { background: var(--dk-gray-2) !important; }
+
+/* QRIS: nominal pembeli dikunci (otomatis sesuai tagihan) */
+.form-input.qris-amount-locked { background: var(--surface2); color: var(--text); cursor: not-allowed; font-weight: 700; }
+.form-input.qris-amount-locked:focus { border-color: var(--border); }
+
+/* ===== QRIS: status pembayaran otomatis & kartu "Pembayaran diterima" ===== */
+.qris-pay-status { max-width: 420px; margin: 12px auto 0; }
+.qps-steps { list-style: none; display: flex; gap: 4px; margin: 0 0 10px; padding: 0; counter-reset: none; }
+.qps-steps li { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; font-size: 11px; color: var(--text2); text-align: center; line-height: 1.25; }
+.qps-steps li:not(:last-child)::after { content: ''; position: absolute; top: 12px; left: calc(50% + 15px); right: calc(-50% + 15px); height: 2px; background: var(--border, #E5E7EB); }
+.qps-steps li.done:not(:last-child)::after { background: var(--green, #22C55E); }
+.qps-dot { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--surface2); color: var(--text2); border: 2px solid var(--border, #E5E7EB); }
+.qps-steps li.cur { color: var(--text); font-weight: 700; }
+.qps-steps li.cur .qps-dot { background: var(--brand); border-color: var(--brand); color: #fff; }
+.qps-steps li.done .qps-dot { background: var(--green, #22C55E); border-color: var(--green, #22C55E); color: #fff; }
+.qps-box { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border-radius: var(--radius-sm, 10px); font-size: 12.5px; line-height: 1.5; color: var(--text); background: var(--surface2); border-left: 3px solid var(--brand); }
+.qps-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qps-text b { font-size: 13px; }
+.qps-text ul { margin: 2px 0 4px 18px; padding: 0; }
+.qps-wait { border-left-color: var(--brand); align-items: center; }
+.qps-info { border-left-color: var(--green, #22C55E); background: var(--green-light, #F0FDF4); }
+.qps-warn { border-left-color: #F59E0B; background: #FFFBEB; }
+.qps-clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; color: var(--text2); }
+.qps-spin { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 3px solid var(--border, #E5E7EB); border-top-color: var(--brand); animation: qpsSpin .9s linear infinite; }
+@keyframes qpsSpin { to { transform: rotate(360deg); } }
+.qps-bar { height: 4px; margin-top: 6px; border-radius: 4px; background: var(--surface2); overflow: hidden; }
+.qps-bar i { display: block; height: 100%; width: 0; background: var(--brand); border-radius: 4px; transition: width 1s linear; }
+
+.qris-paid-box { margin: 12px 0 4px; padding: 18px 16px 14px; border-radius: var(--radius, 14px); text-align: center; background: var(--green-light, #F0FDF4); border: 1.5px solid var(--green, #22C55E); animation: qpbIn .35s ease-out; }
+@keyframes qpbIn { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+.qpb-icon { width: 52px; height: 52px; margin: 0 auto 6px; border-radius: 50%; background: var(--green, #22C55E); color: #fff; font-size: 30px; font-weight: 800; line-height: 52px; box-shadow: 0 0 0 6px rgba(34, 197, 94, .18); }
+.qpb-title { font-size: 17px; font-weight: 800; color: var(--green-dark, #15803D); }
+.qpb-amount { font-size: 24px; font-weight: 800; margin: 2px 0 4px; font-variant-numeric: tabular-nums; color: var(--text); }
+.qpb-meta { font-size: 13px; color: var(--text); }
+.qpb-via { font-size: 12px; color: var(--text2); margin-top: 4px; }
+.qpb-items { margin: 10px auto 0; max-width: 420px; text-align: left; font-size: 12.5px; }
+.qpb-items summary { cursor: pointer; color: var(--text2); text-align: center; font-size: 12px; }
+.qpb-items .qris-pay-items { margin-top: 6px; }
+.qpb-thanks { margin-top: 10px; font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.qpb-close { margin-top: 10px; padding: 7px 18px; font-size: 13px; }
+
+body.dark-mode .qps-box, body.dark-mode .qps-bar { background: var(--dk-gray-2) !important; color: var(--dk-white) !important; }
+body.dark-mode .qps-warn { border-left-color: #F59E0B !important; }
+body.dark-mode .qps-dot { background: var(--dk-gray-2) !important; color: var(--dk-white) !important; }
+body.dark-mode .qps-steps li.cur .qps-dot { background: var(--dk-white) !important; border-color: var(--dk-white) !important; color: #141414 !important; }
+body.dark-mode .qps-steps li.done .qps-dot { background: #22C55E !important; border-color: #22C55E !important; color: #fff !important; }
+body.dark-mode .qps-spin { border-color: var(--dk-gray-3, #444) !important; border-top-color: var(--dk-white) !important; }
+body.dark-mode .qps-bar i { background: var(--dk-white) !important; }
+body.dark-mode .qris-paid-box { background: var(--dk-gray-2) !important; border-color: #22C55E !important; }
+body.dark-mode .qpb-title { color: #4ADE80 !important; }
+body.dark-mode .qpb-amount, body.dark-mode .qpb-meta, body.dark-mode .qpb-thanks { color: var(--dk-white) !important; }
