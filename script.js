@@ -770,32 +770,36 @@ window.copyRekapUtb = async function() {
   const stepsHtml = n => '<ol class="qps-steps">' + STEPS.map((s, i) =>
     `<li class="${i + 1 < n ? 'done' : i + 1 === n ? 'cur' : ''}"><span class="qps-dot">${i + 1 < n ? '✓' : i + 1}</span><span class="qps-lbl">${s}</span></li>`).join('') + '</ol>';
 
+  // Hanya menyentuh DOM jika isinya berubah (fungsi ini dipanggil tiap detik selama tab QRIS terbuka)
+  const setHtml = (el, h) => { if (el.__h !== h) { el.innerHTML = h; el.__h = h; } };
+  const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  const setShow = (el, on) => { const v = on ? '' : 'none'; if (el.style.display !== v) el.style.display = v; };
   function updateConfirmBtn() {
     const btn = $('qrisConfirmBtn'), st = $('qrisPayStatus'), note = $('qrisDynNote');
     if (!btn || !st || !note) return;
     if (!confirmCtx) {
-      btn.style.display = 'none'; st.style.display = 'none'; st.innerHTML = ''; statusSig = '';
-      note.innerHTML = 'Nominal otomatis terisi saat discan.';
+      setShow(btn, false); setShow(st, false); setHtml(st, ''); statusSig = '';
+      setHtml(note, 'Nominal otomatis terisi saat discan.');
       return;
     }
     const c = confirmCtx;
     const done = !!confirmedMap()[c.key];
     const btnText = confirmBusy ? '⏳ Mengirim konfirmasi…'
       : done ? '✓ Konfirmasi terkirim · admin sedang mengecek' : null;
-    btn.style.display = '';
-    btn.classList.toggle('is-done', done);
+    setShow(btn, true);
+    if (btn.classList.contains('is-done') !== done) btn.classList.toggle('is-done', done);
 
     if (!autoMode) {
       // Tanpa kode unik (kode gagal dibuat): admin mengecek manual seperti biasa
-      note.innerHTML = 'Nominal otomatis terisi saat discan. Setelah bayar, tekan <b>Konfirmasi Pembayaran</b> supaya admin langsung mengecek.';
-      st.style.display = 'none'; st.innerHTML = ''; statusSig = '';
+      setHtml(note, 'Nominal otomatis terisi saat discan. Setelah bayar, tekan <b>Konfirmasi Pembayaran</b> supaya admin langsung mengecek.');
+      setShow(st, false); setHtml(st, ''); statusSig = '';
       btn.disabled = confirmBusy || done;
-      btn.textContent = btnText || '✅ Saya sudah bayar · Konfirmasi Pembayaran';
+      setText(btn, btnText || '✅ Saya sudah bayar · Konfirmasi Pembayaran');
       return;
     }
 
     const pay = rupiah(c.pay);
-    note.innerHTML = `📲 Scan lalu bayar <b>tepat ${pay}</b>. Status di layar ini berubah <b>LUNAS otomatis</b>, biasanya kurang dari 1 menit setelah bayar. <b>Tidak perlu kirim bukti transfer.</b>`;
+    setHtml(note, `📲 Scan lalu bayar <b>tepat ${pay}</b>. Status di layar ini berubah <b>LUNAS otomatis</b>, biasanya kurang dari 1 menit setelah bayar. <b>Tidak perlu kirim bukti transfer.</b>`);
     const started = waitingMap()[c.wkey];
     const left = started ? WAIT_MS - (Date.now() - started) : 0;
     const phase = !started ? 'pay' : left > 0 ? 'wait' : 'late';
@@ -821,23 +825,23 @@ window.copyRekapUtb = async function() {
               <ul><li>status transaksi <b>berhasil</b></li><li>nominal <b>tepat ${pay}</b> (termasuk kode unik)</li></ul>
               <span>Kalau sudah benar, kirim konfirmasi supaya admin mengecek manual. Kalau belum bayar, scan QR di atas.</span></div></div>`);
       }
-      st.innerHTML = html;
-      st.style.display = '';
+      setHtml(st, html);
+      setShow(st, true);
     }
     if (phase === 'wait') {
       const ck = st.querySelector('[data-clock]'), bar = st.querySelector('[data-bar]');
-      if (ck) ck.textContent = clock(left);
+      if (ck) setText(ck, clock(left));
       if (bar) bar.style.width = Math.min(100, 100 * (1 - left / WAIT_MS)).toFixed(1) + '%';
     }
 
     if (phase === 'pay') {
-      btn.style.display = ''; btn.disabled = false;
-      btn.textContent = '✅ Saya sudah bayar';
+      setShow(btn, true); btn.disabled = false;
+      setText(btn, '✅ Saya sudah bayar');
     } else if (phase === 'wait') {
-      btn.style.display = 'none';
+      setShow(btn, false);
     } else {
-      btn.style.display = ''; btn.disabled = confirmBusy || done;
-      btn.textContent = btnText || '📩 Konfirmasi ke admin';
+      setShow(btn, true); btn.disabled = confirmBusy || done;
+      setText(btn, btnText || '📩 Konfirmasi ke admin');
     }
   }
   function onPayButton() {
@@ -1250,7 +1254,7 @@ window.copyRekapUtb = async function() {
   // Data pesanan / tanggal yang di-enable berubah -> perbarui tagihan (cek lokal saja, tanpa request)
   let lastOrdersRef = null, lastVisSig = '';
   setInterval(() => {
-    if (!isTabActive('qris')) return;
+    if (document.hidden || !isTabActive('qris')) return;   // layar tidak terlihat -> tidak ada kerja
     const sig = Object.keys(pesanankuVisibleDates || {}).filter(k => pesanankuVisibleDates[k] === true).sort().join(',') + '|' + ordersLoaded + pesanankuSettingsLoaded + '|' + wibDay();
     if (orders !== lastOrdersRef || sig !== lastVisSig) { lastOrdersRef = orders; lastVisSig = sig; refresh(); }
     else updateConfirmBtn();   // hitung mundur pengecekan pembayaran
@@ -2356,4 +2360,110 @@ window.copyRekapUtb = async function() {
   };
 
   window.__invoice = { totals: () => totals(), state: () => st, pdfText, validate: () => validate(), localNumber };
+})();
+
+// ============================================================
+// UPDATE OTOMATIS: pengguna yang masih membuka versi lama ikut ter-update
+// Versi = angka di "script.js?v=..." pada index.html (dinaikkan setiap deploy).
+// Berkala (dan saat aplikasi dibuka lagi) index.html terbaru dicek langsung ke server (tanpa cache).
+// Ada versi lebih baru -> banner "Muat ulang". Kembali ke aplikasi setelah > 5 menit ditinggal
+// -> dimuat ulang otomatis (data tersimpan di server, jadi aman).
+// ============================================================
+(function () {
+  const FIRST_MS = 15 * 1000;          // cek pertama setelah halaman dibuka
+  const CHECK_MS = 5 * 60 * 1000;      // cek berkala selama halaman terlihat
+  const AWAY_MS = 5 * 60 * 1000;       // ditinggal selama ini -> boleh muat ulang otomatis
+  const SNOOZE_MS = 30 * 60 * 1000;    // "nanti" -> banner disembunyikan 30 menit
+  const RETRY_KEY = 'jajanyuk_update_try';
+
+  const verOf = s => { const m = /script\.js\?v=([\w.-]+)/.exec(s || ''); return m ? m[1] : null; };
+  // "20261123-2" vs "20261120-3": bandingkan per kelompok angka
+  const newer = (a, b) => {
+    const x = String(a).split(/\D+/).filter(Boolean).map(Number), y = String(b).split(/\D+/).filter(Boolean).map(Number);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; }
+    return false;
+  };
+  const el = document.querySelector('script[src*="script.js?v="]');
+  const current = el ? verOf(el.getAttribute('src')) : null;
+  if (!current) return;
+
+  // Bersihkan penanda muat ulang (?_v=) dari alamat
+  try {
+    const u = new URL(location.href);
+    if (u.searchParams.has('_v')) { u.searchParams.delete('_v'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); }
+  } catch (_) {}
+
+  let latest = null, checking = null, lastCheck = 0, hiddenAt = 0, snoozeUntil = 0;
+
+  function check() {
+    if (checking) return checking;
+    if (navigator.onLine === false) return Promise.resolve(latest);
+    lastCheck = Date.now();
+    checking = fetch(location.pathname + '?_vc=' + Date.now(), { cache: 'no-store' })
+      .then(r => r.ok ? r.text() : '')
+      .then(html => {
+        const v = verOf(html);
+        if (v && newer(v, current)) { latest = v; showBanner(); }
+        return latest;
+      })
+      .catch(() => latest)
+      .finally(() => { checking = null; });
+    return checking;
+  }
+
+  // Muat ulang dengan alamat baru (?_v=versi) supaya index.html tidak diambil dari cache browser/CDN
+  function reloadTo(v, manual) {
+    try {
+      const t = JSON.parse(sessionStorage.getItem(RETRY_KEY) || 'null');
+      // CDN kadang masih memberi versi lama beberapa menit: jangan muat ulang otomatis berulang-ulang
+      if (!manual && t && t.v === v && Date.now() - t.at < 10 * 60 * 1000) return false;
+      sessionStorage.setItem(RETRY_KEY, JSON.stringify({ v, at: Date.now() }));
+    } catch (_) {}
+    const u = new URL(location.href);
+    u.searchParams.set('_v', v);
+    location.replace(u.toString());
+    return true;
+  }
+
+  function busyTyping() {
+    const a = document.activeElement;
+    return !!(a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable));
+  }
+
+  function showBanner() {
+    if (Date.now() < snoozeUntil) return;
+    let b = document.getElementById('appUpdateBar');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'appUpdateBar';
+      b.className = 'app-update-bar';
+      b.setAttribute('role', 'status');
+      b.innerHTML = '<span class="app-update-text">🔄 Versi baru JajanYuk tersedia</span>' +
+        '<button type="button" class="app-update-go" data-upd="go">Muat ulang</button>' +
+        '<button type="button" class="app-update-x" data-upd="later" aria-label="Nanti saja">✕</button>';
+      b.addEventListener('click', e => {
+        const t = e.target.closest('[data-upd]');
+        if (!t) return;
+        if (t.dataset.upd === 'go') { t.disabled = true; t.textContent = 'Memuat…'; reloadTo(latest, true); }
+        else { snoozeUntil = Date.now() + SNOOZE_MS; b.remove(); }
+      });
+      document.body.appendChild(b);
+    }
+  }
+
+  async function onVisible() {
+    const away = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (!latest && Date.now() - lastCheck > 60 * 1000) await check();
+    if (latest && away >= AWAY_MS && !busyTyping()) reloadTo(latest, false);
+  }
+
+  setTimeout(check, FIRST_MS);
+  setInterval(() => { if (!document.hidden) check(); }, CHECK_MS);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = Date.now(); else onVisible(); });
+  window.addEventListener('online', () => check());
+  // Halaman dipulihkan dari bfcache (tombol kembali / buka ulang tab) -> cek versi
+  window.addEventListener('pageshow', e => { if (e.persisted) check(); });
+
+  window.__appUpdate = { check, current, latest: () => latest, newer, _away: ms => { hiddenAt = Date.now() - ms; return onVisible(); } };
 })();
