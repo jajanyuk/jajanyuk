@@ -1484,3 +1484,13 @@ body.dark-mode .qps-bar i { background: var(--dk-white) !important; }
 body.dark-mode .qris-paid-box { background: var(--dk-gray-2) !important; border-color: #22C55E !important; }
 body.dark-mode .qpb-title { color: #4ADE80 !important; }
 body.dark-mode .qpb-amount, body.dark-mode .qpb-meta, body.dark-mode .qpb-thanks { color: var(--dk-white) !important; }
+
+/* ===== Banner "Versi baru tersedia" ===== */
+.app-update-bar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); padding: 8px 8px 8px 14px; border-radius: 30px; background: var(--text, #1f2328); color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.22); animation: appUpdIn .3s ease-out; }
+@keyframes appUpdIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.app-update-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-update-go { border: 0; border-radius: 20px; padding: 7px 14px; background: var(--brand, #E8590C); color: #fff; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.app-update-go:disabled { opacity: .7; cursor: default; }
+.app-update-x { border: 0; background: none; color: rgba(255,255,255,.75); font-size: 15px; padding: 4px 6px; cursor: pointer; }
+body.dark-mode .app-update-bar { background: var(--dk-white) !important; color: var(--dk-bg, #141414) !important; }
+body.dark-mode .app-update-x { color: var(--dk-bg, #141414) !important; }
