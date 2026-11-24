@@ -582,18 +582,40 @@ window.copyRekapUtb = async function() {
     return orders.filter(o => !o.paid && pesanankuVisibleDates[pesanankuDateKey(o)] === true);
   }
   function dataReady() { return ordersLoaded && pesanankuSettingsLoaded; }
+  // Pembeli = NAMA + LOKASI: dua "Budi" di lantai berbeda tidak digabung (sama seperti tab Tagihan)
+  const normKey = s => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLowerCase();
+  const buyerLabelOf = (name, lokasi) => lokasi ? name + ' · 📍 ' + lokasi : name;
   function unpaidByBuyer() {
     const map = new Map();
     visibleOrders().forEach(o => {
       if (o.paid || !o.buyer) return;
-      const k = o.buyer.trim().toLowerCase();
-      if (!map.has(k)) map.set(k, { name: o.buyer.trim(), total: 0, items: [] });
+      const name = o.buyer.trim(), lokasi = String(o.lokasi || '').trim();
+      const k = normKey(name) + '␟' + normKey(lokasi);
+      if (!map.has(k)) map.set(k, { key: k, name, lokasi, label: buyerLabelOf(name, lokasi), total: 0, items: [] });
       const g = map.get(k);
+      // Penulisan berbeda ("budi" / "Budi"): tampilkan yang memakai huruf besar
+      const nicer = (cur, v) => cur === cur.toLowerCase() && v !== v.toLowerCase();
+      if (nicer(g.name, name) || nicer(g.lokasi, lokasi)) {
+        if (nicer(g.name, name)) g.name = name;
+        if (nicer(g.lokasi, lokasi)) g.lokasi = lokasi;
+        g.label = buyerLabelOf(g.name, g.lokasi);
+      }
       const amt = (o.price || 0) * (o.qty || 1);
       g.total += amt;
       g.items.push({ id: o.firestoreId, item: o.item, qty: o.qty || 1, amount: amt, date: o.date });
     });
     return map;
+  }
+  // Teks di kolom nama -> tagihan. Cocok persis dengan "Nama · 📍 Lokasi", atau nama saja jika
+  // hanya ada SATU pembeli dengan nama itu. Nama sama di beberapa lokasi -> pembeli harus memilih.
+  function resolveBill(bills, text) {
+    const q = normKey(text);
+    if (!q) return { bill: null, same: [] };
+    const all = [...bills.values()];
+    const exact = all.find(b => normKey(b.label) === q);
+    if (exact) return { bill: exact, same: [] };
+    const same = all.filter(b => normKey(b.name) === q);
+    return same.length === 1 ? { bill: same[0], same: [] } : { bill: null, same };
   }
 
   // ---------- UI ----------
@@ -656,7 +678,9 @@ window.copyRekapUtb = async function() {
     $('qrisAutoReload').addEventListener('click', loadAutoList);
 
     const nameEl = $('qrisPayName'), amtEl = $('qrisPayAmount'), listEl = $('qrisNameList'), clearEl = $('qrisNameClear');
-    nameEl.value = lsGet(NAME_KEY) || (typeof utbUserName === 'string' ? utbUserName : '') || '';
+    const utbLabel = typeof utbUserName === 'string' && utbUserName
+      ? buyerLabelOf(utbUserName.trim(), typeof utbUserLokasi === 'string' ? utbUserLokasi.trim() : '') : '';
+    nameEl.value = lsGet(NAME_KEY) || utbLabel || '';
     clearEl.hidden = !nameEl.value;
     let t = null;
     const applyName = () => { lsSet(NAME_KEY, nameEl.value.trim()); refresh(); };
@@ -688,6 +712,10 @@ window.copyRekapUtb = async function() {
       nameEl.value = n; clearEl.hidden = false; amountTouched = false;
       hideNameList(); clearTimeout(t); applyName(); nameEl.blur();
     }
+    $('qrisPayBill').addEventListener('click', e => {
+      const b = e.target.closest('[data-pick]');
+      if (b) pickName(b.dataset.pick);
+    });
     $('qrisConfirmBtn').addEventListener('click', onPayButton);
     $('qrisPaidBox').addEventListener('click', e => {
       if (!e.target.closest('[data-paid-close]')) return;
@@ -708,13 +736,13 @@ window.copyRekapUtb = async function() {
     const nameEl = $('qrisPayName'), listEl = $('qrisNameList');
     if (!nameEl || !listEl || document.activeElement !== nameEl) return;
     const q = nameEl.value.trim().toLowerCase();
-    const all = [...unpaidByBuyer().values()].sort((a, b) => a.name.localeCompare(b.name, 'id'));
-    const hits = all.filter(b => !q || b.name.toLowerCase().includes(q)).slice(0, 30);
+    const all = [...unpaidByBuyer().values()].sort((a, b) => a.name.localeCompare(b.name, 'id') || a.lokasi.localeCompare(b.lokasi, 'id'));
+    const hits = all.filter(b => !q || normKey(b.label).includes(normKey(q))).slice(0, 30);
     if (!all.length) { hideNameList(); return; }
-    if (hits.length === 1 && hits[0].name.toLowerCase() === q) { hideNameList(); return; }
+    if (hits.length === 1 && normKey(hits[0].label) === normKey(q)) { hideNameList(); return; }
     listEl.innerHTML = hits.length
-      ? hits.map(b => `<div class="qris-name-opt" role="option" data-name="${esc(b.name)}">
-          <span class="qris-name-opt-name">${esc(b.name)}</span>
+      ? hits.map(b => `<div class="qris-name-opt" role="option" data-name="${esc(b.label)}">
+          <span class="qris-name-opt-name">${esc(b.name)}${b.lokasi ? ` <span class="qris-name-opt-loc">📍 ${esc(b.lokasi)}</span>` : ''}</span>
           <span class="qris-name-opt-meta">${b.items.length} item · ${rupiah(b.total)}</span></div>`).join('')
       : '<div class="qris-name-empty">Tidak ada tagihan dengan nama ini</div>';
     listEl.hidden = false;
@@ -864,10 +892,10 @@ window.copyRekapUtb = async function() {
   const readJsonLs = k => { try { return JSON.parse(lsGet(k) || 'null'); } catch (_) { return null; } };
   let lastBill = readJsonLs(LASTBILL_KEY);   // { key, name, ids, pay, base, code, t }
   let paidInfo = readJsonLs(PAID_KEY);       // { key, name, pay, items, at, via, shownAt }
-  function rememberBill(bill, ids, pay, code) {
-    const key = bill.name.toLowerCase();
+  function rememberBill(bill, ids, pay, code, sel) {
+    const key = sel;
     if (lastBill && lastBill.key === key && lastBill.pay === pay && lastBill.ids.join(',') === ids.join(',')) return;
-    lastBill = { key, name: bill.name, ids, pay, base: Math.round(bill.total), code: code || 0, t: Date.now() };
+    lastBill = { key, gkey: bill.key, name: bill.label, ids, pay, base: Math.round(bill.total), code: code || 0, t: Date.now() };
     lsSet(LASTBILL_KEY, JSON.stringify(lastBill));
   }
   function detectPaid(nameKey) {
@@ -883,7 +911,7 @@ window.copyRekapUtb = async function() {
       items: list.map(o => ({ item: o.item, qty: o.qty || 1, amount: (o.price || 0) * (o.qty || 1), date: o.date }))
     };
     lsSet(PAID_KEY, JSON.stringify(paidInfo));
-    const m = waitingMap(); Object.keys(m).forEach(k => { if (k.startsWith(lastBill.key + '|')) delete m[k]; }); lsSet(WAIT_KEY, JSON.stringify(m));
+    const m = waitingMap(); Object.keys(m).forEach(k => { if (k.startsWith((lastBill.gkey || lastBill.key) + '|')) delete m[k]; }); lsSet(WAIT_KEY, JSON.stringify(m));
     lastBill = null; lsSet(LASTBILL_KEY, '');
     if (Date.now() - at < LASTBILL_TTL) {
       showToast('Pembayaran ' + paidInfo.name + ' diterima, terima kasih!', '✅');
@@ -922,10 +950,10 @@ window.copyRekapUtb = async function() {
   async function confirmPayment() {
     if (!confirmCtx || confirmBusy) return;
     const c = confirmCtx;
-    if (!confirm('Kirim konfirmasi pembayaran atas nama ' + c.buyer + ' sebesar ' + rupiah(c.pay || c.amount) + ' ke admin?\n\nPastikan kamu sudah membayar lewat QRIS.')) return;
+    if (!confirm('Kirim konfirmasi pembayaran atas nama ' + (c.label || c.buyer) + ' sebesar ' + rupiah(c.pay || c.amount) + ' ke admin?\n\nPastikan kamu sudah membayar lewat QRIS.')) return;
     confirmBusy = true; updateConfirmBtn();
     try {
-      const r = await callApi('/api/qris/confirm', { buyer: c.buyer, orderIds: c.ids });
+      const r = await callApi('/api/qris/confirm', { buyer: c.buyer, lokasi: c.lokasi, orderIds: c.ids });
       if (r && r.ok) {
         markConfirmed(c.key);
         showToast('Konfirmasi terkirim, admin akan segera mengecek', '✅');
@@ -960,7 +988,7 @@ window.copyRekapUtb = async function() {
   // Kode unik reset tiap ganti tanggal (WIB) -> tanggal baru = minta kode baru
   const wibDay = () => Math.floor((Date.now() + 7 * 3600_000) / 86400000);
   function intentKey(bill) {
-    return wibDay() + '|' + bill.name.toLowerCase() + '|' + bill.items.map(i => i.id).filter(Boolean).sort().join(',') + '|' + Math.round(bill.total);
+    return wibDay() + '|' + bill.key + '|' + bill.items.map(i => i.id).filter(Boolean).sort().join(',') + '|' + Math.round(bill.total);
   }
   function intentFor(bill) {
     const key = intentKey(bill);
@@ -973,7 +1001,7 @@ window.copyRekapUtb = async function() {
       if (!it) { it = { state: 'loading', t: now }; intents.set(key, it); }
       it.busy = true;
       const ids = bill.items.map(i => i.id).filter(Boolean).sort();
-      callApi('/api/qris/intent', { buyer: bill.name, amount: Math.round(bill.total), orderIds: ids })
+      callApi('/api/qris/intent', { buyer: bill.name, lokasi: bill.lokasi, amount: Math.round(bill.total), orderIds: ids })
         .then(r => {
           if (r && r.ok && Number(r.refAmount) > 0) {
             const base = Number(r.amount) || Math.round(bill.total);
@@ -1029,12 +1057,17 @@ window.copyRekapUtb = async function() {
     renderNameList();
 
     const name = $('qrisPayName').value.trim();
-    const bill = name ? bills.get(name.toLowerCase()) : null;
+    const sel = normKey(name);
+    const { bill, same } = resolveBill(bills, name);
     const billEl = $('qrisPayBill');
-    if (name) detectPaid(name.toLowerCase());
-    const paidShown = renderPaidBox(name.toLowerCase());
+    if (name) detectPaid(sel);
+    const paidShown = renderPaidBox(sel);
     if (!name) {
       billEl.innerHTML = '<span class="qris-pay-muted">Isi nama untuk melihat tagihan kamu.</span>';
+    } else if (!bill && same.length > 1) {
+      billEl.innerHTML = `<div class="qris-pay-same">👥 Ada ${same.length} pembeli bernama <b>${esc(same[0].name)}</b>. Pilih yang sesuai lokasimu:</div>` +
+        same.map(b => `<button type="button" class="qris-pay-pick" data-pick="${esc(b.label)}">
+          <span>📍 ${esc(b.lokasi || 'tanpa lokasi')}</span><span>${b.items.length} item · ${rupiah(b.total)}</span></button>`).join('');
     } else if (!bill && paidShown && dataReady()) {
       billEl.innerHTML = '<span class="qris-pay-muted">🎉 Tidak ada tagihan lain yang belum lunas atas nama ini.</span>';
     } else if (!bill) {
@@ -1067,9 +1100,9 @@ window.copyRekapUtb = async function() {
     if (fullBill) {
       const ids = bill.items.map(i => i.id).filter(Boolean).sort();
       const payAmt = autoMode ? it.refAmount : amount;
-      const key = bill.name.toLowerCase() + '|' + ids.join(',');
-      confirmCtx = { buyer: bill.name, ids, amount, pay: payAmt, key, wkey: key + '|' + payAmt };
-      if (ids.length) rememberBill(bill, ids, payAmt, autoMode ? it.code : 0);
+      const key = bill.key + '|' + ids.join(',');
+      confirmCtx = { buyer: bill.name, lokasi: bill.lokasi, label: bill.label, ids, amount, pay: payAmt, key, wkey: key + '|' + payAmt };
+      if (ids.length) rememberBill(bill, ids, payAmt, autoMode ? it.code : 0, sel);
     } else {
       confirmCtx = null;
     }
@@ -1119,7 +1152,7 @@ window.copyRekapUtb = async function() {
       const src = qrText === dynText && dynSrc ? dynSrc : await renderQrImage(qrText);
       if (seq !== renderSeq) return;
       dynSrc = src; dynText = qrText;   // selalu diperbarui bersamaan
-      const label = bill ? bill.name : name;
+      const label = bill ? bill.label : name;
       dynInfo = { name: label || 'Pembayaran', amount: pay };
       if ($('qrisDynImg').getAttribute('src') !== src) $('qrisDynImg').src = src;
       $('qrisDynName').textContent = label ? '👤 ' + label : 'Pembayaran';
