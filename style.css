@@ -1494,3 +1494,13 @@ body.dark-mode .qpb-amount, body.dark-mode .qpb-meta, body.dark-mode .qpb-thanks
 .app-update-x { border: 0; background: none; color: rgba(255,255,255,.75); font-size: 15px; padding: 4px 6px; cursor: pointer; }
 body.dark-mode .app-update-bar { background: var(--dk-white) !important; color: var(--dk-bg, #141414) !important; }
 body.dark-mode .app-update-x { color: var(--dk-bg, #141414) !important; }
+
+/* ===== QRIS: nama sama di lokasi berbeda ===== */
+.qris-name-opt-loc { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 10px; background: var(--surface2); color: var(--text2); font-size: 11.5px; font-weight: 600; }
+.qris-pay-same { font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 8px; }
+.qris-pay-pick { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; padding: 11px 13px; border: 1.5px solid var(--border, #E5E7EB); border-radius: var(--radius-sm, 10px); background: var(--surface, #fff); color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: left; }
+.qris-pay-pick span:last-child { color: var(--text2); font-weight: 500; font-size: 12.5px; white-space: nowrap; }
+.qris-pay-pick:hover, .qris-pay-pick:focus-visible { border-color: var(--brand); outline: none; }
+body.dark-mode .qris-name-opt-loc { background: var(--dk-gray-3, #333) !important; color: var(--dk-white) !important; }
+body.dark-mode .qris-pay-pick { background: var(--dk-gray-2) !important; color: var(--dk-white) !important; border-color: var(--dk-gray-3, #333) !important; }
+body.dark-mode .qris-pay-same { color: var(--dk-white) !important; }
